@@ -1,6 +1,7 @@
-# LEMNIS 🌀 | NEXUS CLOUD
+# LEMNIS 🌀
 
-> **The Decentralized Cloud Platform on the Internet Computer**
+> **The Decentralized Cloud Platform**  
+> AWS/GCP/Azure alternative running on ICP + Akash
 
 [![ICP](https://img.shields.io/badge/Internet%20Computer-Protocol-blueviolet)](https://internetcomputer.org)
 [![Akash](https://img.shields.io/badge/Akash-Network-red)](https://akash.network)
@@ -8,143 +9,119 @@
 
 ---
 
-## 🎯 Vision
+## 🚀 What is LEMNIS?
 
-**LEMNIS** is a decentralized cloud platform (codename: **NEXUS CLOUD**) that provides AWS/GCP/Azure-equivalent services running entirely on decentralized infrastructure.
+LEMNIS is a **fully decentralized cloud platform** providing AWS/GCP/Azure-equivalent services on blockchain infrastructure. No single points of failure. No censorship. 65-85% cost savings.
 
-| Traditional Cloud Problem | LEMNIS Solution |
-|---------------------------|-----------------|
-| Single point of failure | Multi-node consensus, no AWS-style outages |
-| Vendor lock-in | Open protocols, portable deployments |
-| Censorship risk | Permissionless, unstoppable backends |
-| Geographic restrictions | Global node network, no jurisdiction limits |
-| Opaque pricing | Transparent on-chain metering |
-
----
-
-## 🏗️ Three-Tier Architecture
-
-| Layer | Name | Purpose |
-|-------|------|---------|
-| 🎨 **Brand** | **LEMNIS** | The Platform - User-facing cloud services |
-| ⚙️ **Backend** | **Protocol 28** | The Architecture - Core canister infrastructure |
-| 🛠️ **Tooling** | **Lemniskit** | The SDK - Developer tools and CLI |
+| Traditional Cloud | LEMNIS |
+|-------------------|--------|
+| AWS outages take down the internet | Multi-node consensus, no SPOF |
+| Locked into proprietary APIs | Open protocols, portable |
+| Deplatformed at provider's discretion | Permissionless, unstoppable |
+| Unpredictable bills | Transparent on-chain metering |
+| Zero governance input | DAO-governed platform |
 
 ---
 
-## 🌐 Infrastructure Stack
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    LEMNIS COMPUTE LAYER                          │
-├─────────────────┬─────────────────┬─────────────────────────────┤
-│   ICP CANISTERS │  AKASH CONTAINERS │  EDGE FUNCTIONS           │
-│   (Persistent)   │  (Kubernetes)     │  (Serverless)            │
-├─────────────────┼─────────────────┼─────────────────────────────┤
-│ • Stateful      │ • Stateless/ful  │ • Stateless               │
-│ • WASM runtime  │ • Docker/OCI     │ • WASM/V8 isolates        │
-│ • ~$5/GB/yr     │ • ~$0.01/GB/hr   │ • Per-invocation          │
-└─────────────────┴─────────────────┴─────────────────────────────┘
+│                         LEMNIS CLOUD                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                   LEMNISKIT (SDK)                        │    │
+│  │         CLI • Client Libraries • Dev Portal             │    │
+│  └───────────────────────────┬─────────────────────────────┘    │
+│                              │                                   │
+│  ┌───────────────────────────▼─────────────────────────────┐    │
+│  │                   PROTOCOL 28 (Core)                     │    │
+│  │                                                          │    │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ │    │
+│  │  │Identity│ │Compute │ │Storage │ │Database│ │Billing │ │    │
+│  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ │    │
+│  │                                                          │    │
+│  └──────────────────────────┬───────────────────────────────┘    │
+│                             │                                    │
+│         ┌───────────────────┼───────────────────┐               │
+│         ▼                   ▼                   ▼               │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │     ICP     │    │    AKASH    │    │IPFS/Arweave│         │
+│  │  Canisters  │    │ Containers  │    │  Storage   │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Three-Tier Structure
+
+| Layer | Name | Purpose |
+|-------|------|---------|
+| 🎨 **Brand** | **LEMNIS** | User-facing cloud platform |
+| ⚙️ **Backend** | **Protocol 28** | Core canister infrastructure |
+| 🛠️ **Tooling** | **Lemniskit** | CLI, SDKs, dev tools |
+
+---
+
+## ⚡ Quick Start
+
+```bash
+# Install CLI
+npm install -g @lemnis/lemniskit
+
+# Login with Internet Identity
+lemniskit auth login
+
+# Create a project
+lemniskit projects create my-app
+
+# Deploy
+lemniskit deploy
 ```
 
 ---
 
 ## 📦 Services
 
-| Service | AWS Equivalent | Status | Backend |
-|---------|---------------|--------|---------|
-| **LEMNIS Compute** | EC2 / Lambda | 🔜 MVP | ICP + Akash |
-| **LEMNIS Storage** | S3 | 🔜 MVP | IPFS + Arweave |
-| **LEMNIS DB** | DynamoDB | 🔜 MVP | ICP Stable Memory |
-| **LEMNIS Identity** | IAM / Cognito | 🔜 MVP | Internet Identity |
-| **LEMNIS Billing** | Cost Explorer | 🔜 MVP | Stablecoin |
+| Service | Description | Backend |
+|---------|-------------|---------|
+| **Compute** | Containers & WASM | ICP + Akash |
+| **Storage** | S3-compatible buckets | IPFS + Arweave |
+| **Database** | Key-value store | ICP Stable Memory |
+| **Identity** | Auth & IAM | Internet Identity |
+| **Billing** | Usage metering | Stablecoin |
 
 ---
 
-## 🏛️ Full Architecture
+## 💰 Pricing
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         LEMNIS PLATFORM                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │                     LEMNISKIT (SDK)                      │   │
-│   │  CLI Tools • Client Libraries • Developer Portal        │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│                              ▼                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │                    PROTOCOL 28 (Core)                    │   │
-│   │                                                          │   │
-│   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │   │
-│   │  │ Identity │  │ Compute  │  │ Storage  │  │ Database │ │   │
-│   │  │ Canister │  │ Canister │  │ Canister │  │ Canister │ │   │
-│   │  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │   │
-│   │                                                          │   │
-│   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │   │
-│   │  │ Billing  │  │ Registry │  │ Gateway  │  │ Metrics  │ │   │
-│   │  │ Canister │  │ Canister │  │ Canister │  │ Canister │ │   │
-│   │  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│         ┌────────────────────┼────────────────────┐             │
-│         ▼                    ▼                    ▼             │
-│   ┌───────────┐        ┌───────────┐        ┌───────────┐      │
-│   │    ICP    │        │   AKASH   │        │   IPFS    │      │
-│   │  Mainnet  │        │  Network  │        │ Arweave   │      │
-│   └───────────┘        └───────────┘        └───────────┘      │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Indie Developer Plans
+
+| Plan | Price | Compute | Storage | Bandwidth |
+|------|-------|---------|---------|-----------|
+| **Free** | $0/mo | 100M cycles | 1 GB | 10 GB |
+| **Indie** | $9/mo | 5B cycles | 20 GB | 100 GB |
+| **Pro** | $29/mo | 20B cycles | 100 GB | 500 GB |
+
+### vs AWS (65-85% savings)
+
+| Workload | AWS | LEMNIS |
+|----------|-----|--------|
+| API (10M req/mo) | $50 | $15 |
+| Container (24/7) | $100 | $30 |
+| GPU (100 hrs) | $433 | $140 |
 
 ---
 
-## 🚀 Quick Start
+## 🗳️ DAO Governance
 
-### Prerequisites
-- [DFINITY Canister SDK](https://internetcomputer.org/docs/current/developer-docs/setup/install/)
-- [Node.js 18+](https://nodejs.org/)
-- ICP tokens for cycles
+LEMNIS is governed by token holders through:
+- **Technical Committee** - Protocol upgrades
+- **Treasury Committee** - Budget allocation
+- **Grants Committee** - Developer funding
 
-### Installation
-
-```bash
-# Install Lemniskit CLI
-npm install -g @lemnis/lemniskit
-
-# Initialize a new project
-lemniskit init my-app
-
-# Deploy to ICP
-lemniskit deploy
-```
-
-### CLI Commands
-
-```bash
-# Authentication
-lemniskit auth login              # Internet Identity login
-lemniskit auth login --wallet     # MetaMask/wallet login
-
-# Projects
-lemniskit projects create my-project
-lemniskit projects list
-
-# Deployments
-lemniskit deploy                  # Deploy from nexus.yaml
-lemniskit deployments list
-lemniskit deployments logs my-api
-lemniskit deployments scale my-api --replicas 3
-
-# Storage
-lemniskit storage buckets create my-bucket
-lemniskit storage cp ./file.txt gs://my-bucket/
-
-# Billing
-lemniskit balance                 # Check cycles balance
-```
+[Learn more →](docs/ARCHITECTURE.md#section-3-dao-governance-architecture)
 
 ---
 
@@ -152,67 +129,42 @@ lemniskit balance                 # Check cycles balance
 
 ```
 lemnis/
-├── protocol-28/              # Core canister infrastructure
-│   ├── identity/             # Internet Identity integration
-│   ├── compute/              # Compute service canisters
-│   ├── storage/              # Storage service canisters
-│   ├── database/             # Database service canisters
-│   └── billing/              # Cycles management
+├── protocol-28/           # Core canisters (Motoko)
+│   ├── identity/          # IAM + Auth
+│   ├── compute/           # Deployment management
+│   ├── storage/           # Object storage
+│   ├── database/          # Key-value store
+│   └── billing/           # Cycles management
 │
-├── lemniskit/                # Developer tooling
-│   ├── cli/                  # Command-line interface
-│   ├── sdk/                  # Client SDKs (JS/TS)
-│   └── templates/            # Project templates
+├── lemniskit/             # Developer tools
+│   ├── cli/               # Command-line interface
+│   └── sdk/               # Client libraries
 │
-├── console/                  # Web management console
-│   ├── src/
-│   └── assets/
+├── console/               # Web dashboard
 │
-├── docs/                     # Documentation
-│   └── ARCHITECTURE.md       # Full technical whitepaper
+├── docs/                  # Documentation
+│   └── ARCHITECTURE.md    # Full whitepaper
 │
-├── dfx.json                  # ICP canister config
+├── dfx.json               # ICP config
 └── README.md
 ```
-
----
-
-## 💰 Pricing (MVP Target)
-
-| Resource | Price | Notes |
-|----------|-------|-------|
-| ICP Compute | ~$5.35/GB/year | Stable memory storage |
-| Akash Container | ~$0.018/vCPU-hour | 65-85% cheaper than AWS |
-| IPFS Storage | ~$0.05/GB/month | Hot object storage |
-| Network Egress | ~$0.05/GB | Outbound traffic |
-
----
-
-## 📅 Roadmap
-
-| Quarter | Budget | Milestone |
-|---------|--------|-----------|
-| Q1 | $25,000 | **MVP Launch** - Auth, Deploy, Basic Console |
-| Q2 | $45,000 | Storage + SDK |
-| Q3 | $60,000 | Observability + Autoscaling |
-| Q4 | $80,000 | GA Launch + Enterprise |
 
 ---
 
 ## 🛠️ Development
 
 ```bash
-# Clone the repository
+# Clone
 git clone https://github.com/Konstadinos1/LEMNIS.git
 cd LEMNIS
 
 # Start local ICP replica
 dfx start --background
 
-# Deploy locally
+# Deploy canisters
 dfx deploy
 
-# Run CLI in dev mode
+# Run CLI
 cd lemniskit/cli
 npm install
 npm run dev -- --help
@@ -220,22 +172,32 @@ npm run dev -- --help
 
 ---
 
-## 📜 License
+## 📅 Roadmap
 
-Apache 2.0 - See [LICENSE](LICENSE) for details.
+| Quarter | Milestone |
+|---------|-----------|
+| **Q1** | MVP Launch - Auth, Compute, Console |
+| **Q2** | Storage + SDKs |
+| **Q3** | Observability + Autoscaling |
+| **Q4** | GA Launch + Enterprise |
 
 ---
 
-## 🔗 Links
+## 📖 Documentation
 
-- [Full Architecture Whitepaper](docs/ARCHITECTURE.md)
-- [Internet Computer](https://internetcomputer.org)
-- [Akash Network](https://akash.network)
-- [DFINITY Developer Docs](https://internetcomputer.org/docs)
+- [**Full Architecture Whitepaper**](docs/ARCHITECTURE.md) - 15 sections, enterprise-grade
+- [Internet Computer Docs](https://internetcomputer.org/docs)
+- [Akash Network Docs](https://akash.network/docs)
+
+---
+
+## 📜 License
+
+Apache 2.0 - See [LICENSE](LICENSE)
 
 ---
 
 <p align="center">
-  <strong>Built with 🌀 on the Internet Computer + Akash Network</strong><br>
-  <em>True Decentralization. No Compromises.</em>
+  <strong>True Decentralization. No Compromises.</strong><br>
+  <em>Built on ICP + Akash</em>
 </p>
