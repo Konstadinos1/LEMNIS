@@ -20,6 +20,14 @@
             "main": "protocol-28/billing/main.mo",
             "type": "motoko"
         },
+        "solana_bridge": {
+            "main": "protocol-28/solana-bridge/main.mo",
+            "type": "motoko"
+        },
+        "market_engine": {
+            "main": "protocol-28/market-engine/main.mo",
+            "type": "motoko"
+        },
         "console": {
             "source": [
                 "console/dist"
