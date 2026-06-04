@@ -34,6 +34,7 @@ defmodule Relay.MixProject do
       {:corsica, "~> 2.1"},
       {:redix, "~> 1.5"},
       {:hammer, "~> 7.0"},
+      {:finch, "~> 0.19"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.1"},
       {:opentelemetry_exporter, "~> 1.7"},

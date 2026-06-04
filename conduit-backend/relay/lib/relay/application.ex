@@ -7,6 +7,13 @@ defmodule Relay.Application do
       Relay.Repo,
       {Phoenix.PubSub, name: Relay.PubSub},
       {Redix, {Application.fetch_env!(:relay, :redis_url), [name: :redix]}},
+      {Finch, name: Relay.Finch, pools: %{
+        "https://fcm.googleapis.com" => [size: 10, count: 2],
+        "https://oauth2.googleapis.com" => [size: 4, count: 1],
+        "https://api.push.apple.com" => [size: 10, count: 2, protocol: :http2],
+        "https://api.sandbox.push.apple.com" => [size: 4, count: 1, protocol: :http2],
+      }},
+      Relay.Push.FcmTokenCache,
       RelayWeb.Endpoint
     ]
 

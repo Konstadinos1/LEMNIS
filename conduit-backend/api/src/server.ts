@@ -9,6 +9,7 @@ import { walletRouter } from './routes/wallet';
 import { prekeysRouter } from './routes/prekeys';
 import { allowlistRouter } from './routes/allowlist';
 import { authRouter } from './routes/auth';
+import { pushRouter } from './routes/push';
 
 const app = Fastify({
   logger: {
@@ -47,6 +48,7 @@ await app.register(swapRouter, { prefix: '/api/swap' });
 await app.register(walletRouter, { prefix: '/api/wallet' });
 await app.register(prekeysRouter, { prefix: '/api/prekeys' });
 await app.register(allowlistRouter, { prefix: '/api/tokens' });
+await app.register(pushRouter, { prefix: '/api/push' });
 
 const PORT = Number(process.env.PORT ?? 3000);
 await app.listen({ port: PORT, host: '0.0.0.0' });

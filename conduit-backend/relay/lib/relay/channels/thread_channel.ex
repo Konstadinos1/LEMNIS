@@ -1,7 +1,7 @@
 defmodule RelayWeb.ThreadChannel do
   use Phoenix.Channel
 
-  alias Relay.{Repo, MessageEnvelope, RateLimiter}
+  alias Relay.{Repo, MessageEnvelope, RateLimiter, Push}
 
   @max_envelope_bytes 65_536
   @offline_ttl_seconds 7 * 24 * 60 * 60
@@ -30,30 +30,46 @@ defmodule RelayWeb.ThreadChannel do
   @doc """
   Receive an encrypted envelope from the client and fan it out to other
   participants. The relay sees only ciphertext — never plaintext.
+
+  Optional `to` field: a list of identity fingerprints (hex strings) for
+  push notification dispatch to offline recipients.  The sender supplies
+  this because the relay does not track thread membership.
   """
-  def handle_in("send_message", %{"envelope" => envelope, "session_id" => session_id}, socket)
-      when is_binary(envelope) and byte_size(envelope) <= @max_envelope_bytes do
-    with :ok <- RateLimiter.check(socket.assigns.identity_id) do
-      payload = %{
-        "envelope" => envelope,
-        "session_id" => session_id,
-        "sender_id" => socket.assigns.identity_id
-      }
+  def handle_in("send_message", params, socket) do
+    envelope = Map.get(params, "envelope", "")
+    session_id = Map.get(params, "session_id", "")
+    recipients = Map.get(params, "to", [])
 
-      # Fan out to all connected participants in the thread
-      broadcast!(socket, "new_message", payload)
+    cond do
+      not is_binary(envelope) or byte_size(envelope) > @max_envelope_bytes ->
+        {:reply, {:error, %{reason: "envelope_too_large"}}, socket}
 
-      # Persist for offline delivery (TTL'd ciphertext only)
-      store_for_offline(socket.assigns.thread_id, payload)
+      not is_list(recipients) ->
+        {:reply, {:error, %{reason: "invalid_recipients"}}, socket}
 
-      {:reply, :ok, socket}
-    else
-      {:error, :rate_limited} -> {:reply, {:error, %{reason: "rate_limited"}}, socket}
+      true ->
+        with :ok <- RateLimiter.check(socket.assigns.identity_id) do
+          payload = %{
+            "envelope" => envelope,
+            "session_id" => session_id,
+            "sender_id" => socket.assigns.identity_id
+          }
+
+          # Fan out to all connected participants in the thread
+          broadcast!(socket, "new_message", payload)
+
+          # Persist for offline delivery (TTL'd ciphertext only)
+          store_for_offline(socket.assigns.thread_id, payload)
+
+          # Dispatch push to offline recipients (fire-and-forget)
+          offline_recipients = Enum.reject(recipients, &(&1 == socket.assigns.identity_id))
+          Push.dispatch_async(offline_recipients, socket.assigns.thread_id)
+
+          {:reply, :ok, socket}
+        else
+          {:error, :rate_limited} -> {:reply, {:error, %{reason: "rate_limited"}}, socket}
+        end
     end
-  end
-
-  def handle_in("send_message", _params, socket) do
-    {:reply, {:error, %{reason: "envelope_too_large"}}, socket}
   end
 
   # Deliver any envelopes that arrived while the client was offline.
