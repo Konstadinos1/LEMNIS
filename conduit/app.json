@@ -21,7 +21,34 @@
       "infoPlist": {
         "NSFaceIDUsageDescription": "Used to authenticate swap and wallet operations.",
         "NSCameraUsageDescription": "Used to scan QR codes for wallet addresses.",
-        "NSLocalNetworkUsageDescription": "Used for local IPC communication."
+        "NSLocalNetworkUsageDescription": "Used for local IPC communication.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        },
+        "NSPinnedDomains": {
+          "relay.conduit.app": {
+            "NSIncludesSubdomains": false,
+            "NSPinnedLeafIdentities": [
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_RELAY_LEAF_SPKI_SHA256_BASE64="
+              },
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_RELAY_BACKUP_SPKI_SHA256_BASE64="
+              }
+            ]
+          },
+          "api.conduit.app": {
+            "NSIncludesSubdomains": false,
+            "NSPinnedLeafIdentities": [
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_API_LEAF_SPKI_SHA256_BASE64="
+              },
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_API_BACKUP_SPKI_SHA256_BASE64="
+              }
+            ]
+          }
+        }
       },
       "entitlements": {
         "com.apple.developer.associated-domains": [
@@ -52,7 +79,8 @@
           "faceIDPermission": "Used to authenticate wallet operations."
         }
       ],
-      "react-native-mmkv"
+      "react-native-mmkv",
+      "./plugins/withCertificatePinning"
     ],
     "experiments": {
       "typedRoutes": true
