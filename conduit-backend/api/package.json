@@ -20,7 +20,9 @@
     "permissionless": "^0.2.0",
     "postgres": "^3.4.0",
     "ioredis": "^5.4.0",
-    "pino": "^9.5.0"
+    "pino": "^9.5.0",
+    "fastify-plugin": "^5.0.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
