@@ -3,11 +3,12 @@ import { StatusBar } from 'expo-status-bar';
 import { Stack, router } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { hasIdentity } from '@/lib/crypto/identity';
 import { loadSmartAccount } from '@/lib/wallet/smartAccount';
 import { useWalletStore } from '@/store/wallet';
+import { getSecurityReport } from 'conduit-security';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -24,6 +25,18 @@ function AppNavigator() {
   useEffect(() => {
     async function bootstrap() {
       try {
+        // Security gate — warn on compromised devices; block if Frida detected
+        const security = await getSecurityReport().catch(() => null);
+        if (security?.fridaDetected || security?.reverseEngineered) {
+          Alert.alert(
+            'Security Alert',
+            'A reverse-engineering tool has been detected. Conduit cannot run safely.',
+            [{ text: 'Exit', onPress: () => { throw new Error('security_block'); } }],
+            { cancelable: false },
+          );
+          return;
+        }
+
         const [hasId, account] = await Promise.all([
           hasIdentity(),
           loadSmartAccount(),

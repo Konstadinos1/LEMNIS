@@ -52,7 +52,11 @@
 
     "@react-navigation/native": "^7.0.0",
     "react-native-safe-area-context": "4.12.0",
-    "react-native-screens": "^4.4.0"
+    "react-native-screens": "^4.4.0",
+
+    "expo-passkeys": "file:./modules/expo-passkeys",
+    "conduit-crypto": "file:./modules/conduit-crypto",
+    "conduit-security": "file:./modules/conduit-security"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
