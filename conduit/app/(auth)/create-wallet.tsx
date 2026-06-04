@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
-import * as LocalAuthentication from 'expo-local-authentication';
 import * as Haptics from 'expo-haptics';
-import { saveAccountAddress } from '@/crypto/wallet';
+import { createSmartAccount } from '@/lib/wallet/smartAccount';
+import { generateAndStoreIdentity } from '@/lib/crypto/identity';
 import { useWalletStore } from '@/store/wallet';
 import { Button } from '@/components/ui/Button';
 import { colors, spacing, typography } from '@/theme/tokens';
@@ -12,25 +12,43 @@ type State = 'idle' | 'creating' | 'done' | 'error';
 
 export default function CreateWalletScreen() {
   const [state, setState] = useState<State>('idle');
+  const [step, setStep] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const setAccount = useWalletStore((s) => s.setAccount);
 
   async function handleCreate() {
     setState('creating');
+    setErrorMsg('');
     try {
-      // 1. Biometric gate
-      const bio = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Create your Conduit wallet',
-      });
-      if (!bio.success) { setState('idle'); return; }
+      // Step 1: Generate Signal identity (Ed25519/X25519) + pre-keys
+      setStep('Generating identity keys…');
+      const identity = await generateAndStoreIdentity();
 
-      // 2. Create passkey + deploy (or counterfactual) smart account
-      //    In production this calls the native JSI module → Kernel v3 factory.
-      //    Here we simulate with a placeholder address.
-      await new Promise((r) => setTimeout(r, 1500));
-      const address = '0x0000000000000000000000000000000000000001' as `0x${string}`;
-      await saveAccountAddress(address);
-      setAccount({ address, isDeployed: false, chainId: 8453 });
+      // Step 2: Create passkey + derive Kernel v3 smart account address
+      setStep('Creating passkey in Secure Enclave…');
+      const account = await createSmartAccount();
+      setAccount(account);
+
+      // Step 3: Register pre-key bundle with relay (fire-and-forget)
+      setStep('Registering with relay…');
+      fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/api/prekeys/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identityKey: Array.from(identity.identityKeyDh.publicKey),
+          registrationId: identity.registrationId,
+          signedPreKey: {
+            keyId: identity.signedPreKey.keyId,
+            publicKey: Array.from(identity.signedPreKey.keyPair.publicKey),
+            signature: Array.from(identity.signedPreKey.signature),
+          },
+          kyberPreKey: { keyId: 0, publicKey: [], signature: [] }, // PQXDH: TODO
+          oneTimePreKeys: identity.oneTimePreKeys.slice(0, 5).map((k, i) => ({
+            keyId: i,
+            publicKey: Array.from(k.publicKey),
+          })),
+        }),
+      }).catch(() => {}); // non-blocking
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setState('done');
@@ -45,22 +63,34 @@ export default function CreateWalletScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        <Text style={styles.title}>Create wallet</Text>
-        <Text style={styles.subtitle}>
-          Your wallet is secured by Face ID / fingerprint.
-          The signing key never leaves your device.
-        </Text>
+        <Text style={styles.title}>Create your wallet</Text>
 
-        {state === 'creating' && (
-          <ActivityIndicator color={colors.brand.primary} size="large" />
-        )}
+        <View style={styles.featureList}>
+          {[
+            ['🔐', 'Secured by Face ID / fingerprint', 'Key never leaves your device'],
+            ['🚫', 'No seed phrase', 'Social recovery if you lose access'],
+            ['⛽', 'Gas sponsored', 'We cover network fees for your swaps'],
+          ].map(([icon, heading, sub]) => (
+            <View key={heading} style={styles.featureRow}>
+              <Text style={styles.featureIcon}>{icon}</Text>
+              <View>
+                <Text style={styles.featureHeading}>{heading}</Text>
+                <Text style={styles.featureSub}>{sub}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
 
-        {state === 'error' && (
+        {state === 'creating' && step ? (
+          <Text style={styles.stepText}>{step}</Text>
+        ) : null}
+
+        {state === 'error' ? (
           <Text style={styles.error}>{errorMsg}</Text>
-        )}
+        ) : null}
 
         <Button
-          label="Create with Face ID"
+          label="Create wallet with Face ID"
           variant="primary"
           size="lg"
           fullWidth
@@ -68,6 +98,10 @@ export default function CreateWalletScreen() {
           disabled={state === 'creating'}
           onPress={handleCreate}
         />
+
+        <Text style={styles.disclaimer}>
+          We cannot move your funds or read your messages.
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -75,25 +109,27 @@ export default function CreateWalletScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.base },
-  container: {
-    flex: 1,
-    padding: spacing.xl,
-    justifyContent: 'center',
-    gap: spacing.lg,
-  },
+  container: { flex: 1, padding: spacing.xl, justifyContent: 'center', gap: spacing.lg },
   title: {
     fontSize: typography.size['2xl'],
     fontWeight: typography.weight.bold as '700',
     color: colors.text.primary,
   },
-  subtitle: {
+  featureList: { gap: spacing.md },
+  featureRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
+  featureIcon: { fontSize: typography.size.xl, width: 32, textAlign: 'center' },
+  featureHeading: {
     fontSize: typography.size.base,
-    color: colors.text.secondary,
-    lineHeight: 24,
+    fontWeight: typography.weight.semibold as '600',
+    color: colors.text.primary,
   },
-  error: {
-    color: colors.error,
-    fontSize: typography.size.sm,
+  featureSub: { fontSize: typography.size.sm, color: colors.text.secondary },
+  stepText: { fontSize: typography.size.sm, color: colors.text.secondary, textAlign: 'center' },
+  error: { color: colors.error, fontSize: typography.size.sm, textAlign: 'center' },
+  disclaimer: {
+    fontSize: typography.size.xs,
+    color: colors.text.tertiary,
     textAlign: 'center',
+    lineHeight: 18,
   },
 });

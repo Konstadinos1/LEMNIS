@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -18,56 +18,59 @@ import { useChatStore } from '@/store/chat';
 import { useSwapStore } from '@/store/swap';
 import { useWalletStore } from '@/store/wallet';
 import { useThreadMessages } from '@/hooks/useMessages';
+import { useSendMessage } from '@/hooks/useSendMessage';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
 
 export default function ThreadScreen() {
   const { threadId } = useLocalSearchParams<{ threadId: string }>();
   const [draft, setDraft] = useState('');
+  const wsRef = useRef<WebSocket | null>(null);
 
   const messages = useChatStore((s) => s.messages[threadId] ?? []);
-  const appendMessage = useChatStore((s) => s.appendMessage);
+  const thread = useChatStore((s) => s.threads[threadId]);
+  const markRead = useChatStore((s) => s.markRead);
   const myId = useWalletStore((s) => s.account?.address ?? '');
   const openSwapSheet = useSwapStore((s) => s.openSwapSheet);
 
-  useThreadMessages(threadId);
+  useThreadMessages(threadId, wsRef);
 
-  const sendMessage = useCallback(async () => {
+  useEffect(() => {
+    markRead(threadId);
+  }, [threadId, markRead]);
+
+  const sendMessage = useSendMessage(threadId, wsRef);
+
+  async function handleSend() {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-
+    await sendMessage(text);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    // In production, this goes through the Double Ratchet encrypt → relay path.
-    appendMessage(threadId, {
-      id: crypto.randomUUID(),
-      threadId,
-      senderId: myId,
-      timestamp: Date.now(),
-      type: 'text',
-      ciphertext: '',
-      plaintext: text,
-    });
-  }, [draft, threadId, myId, appendMessage]);
-
-  function handleSwap() {
-    openSwapSheet(threadId);
   }
+
+  const participantLabel = thread?.participants
+    .filter((p) => p !== myId)
+    .map((p) => `${p.slice(0, 6)}…${p.slice(-4)}`)
+    .join(', ') ?? threadId.slice(0, 8) + '…';
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaView style={styles.safe}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.back}>‹</Text>
           </Pressable>
-          <Text style={styles.threadTitle} numberOfLines={1}>
-            {threadId.slice(0, 8)}…
-          </Text>
+          <View style={styles.headerInfo}>
+            <Text style={styles.threadTitle} numberOfLines={1}>{participantLabel}</Text>
+            <Text style={styles.encryptedLabel}>🔒 End-to-end encrypted</Text>
+          </View>
+          <Pressable style={styles.swapHeaderBtn} onPress={() => openSwapSheet(threadId)}>
+            <Text style={styles.swapHeaderBtnText}>⇄ Swap</Text>
+          </Pressable>
         </View>
 
-        {/* Message list — FlashList with multiple recycling pools */}
+        {/* Message list */}
         <View style={styles.listContainer}>
           <MessageList messages={messages} myId={myId} />
         </View>
@@ -75,10 +78,9 @@ export default function ThreadScreen() {
         {/* Composer */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
         >
           <View style={styles.composer}>
-            <Pressable style={styles.swapBtn} onPress={handleSwap}>
+            <Pressable style={styles.swapBtn} onPress={() => openSwapSheet(threadId)}>
               <Text style={styles.swapBtnText}>⇄</Text>
             </Pressable>
             <TextInput
@@ -89,15 +91,20 @@ export default function ThreadScreen() {
               placeholderTextColor={colors.text.tertiary}
               multiline
               returnKeyType="send"
-              onSubmitEditing={sendMessage}
+              blurOnSubmit={false}
+              onSubmitEditing={handleSend}
             />
-            <Pressable style={styles.sendBtn} onPress={sendMessage}>
+            <Pressable
+              style={[styles.sendBtn, !draft.trim() && styles.sendBtnDisabled]}
+              onPress={handleSend}
+              disabled={!draft.trim()}
+            >
               <Text style={styles.sendBtnText}>↑</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
 
-        {/* Inline swap sheet — overlays the thread without unmounting it */}
+        {/* Inline swap sheet */}
         <SwapSheet />
       </SafeAreaView>
     </GestureHandlerRootView>
@@ -110,22 +117,31 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  back: {
-    fontSize: 28,
-    color: colors.brand.primary,
-    fontWeight: '300',
-  },
+  backBtn: { padding: spacing.xs },
+  back: { fontSize: 28, color: colors.brand.primary, fontWeight: '300' },
+  headerInfo: { flex: 1 },
   threadTitle: {
-    flex: 1,
     fontSize: typography.size.base,
     fontWeight: typography.weight.semibold as '600',
     color: colors.text.primary,
+  },
+  encryptedLabel: { fontSize: typography.size.xs, color: colors.text.tertiary },
+  swapHeaderBtn: {
+    backgroundColor: colors.brand.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  swapHeaderBtnText: {
+    color: colors.text.inverse,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold as '600',
   },
   listContainer: { flex: 1 },
   composer: {
@@ -147,11 +163,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.default,
   },
-  swapBtnText: {
-    color: colors.brand.primary,
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.bold as '700',
-  },
+  swapBtnText: { color: colors.brand.primary, fontSize: typography.size.lg },
   input: {
     flex: 1,
     minHeight: 40,
@@ -173,6 +185,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sendBtnDisabled: { backgroundColor: colors.bg.subtle },
   sendBtnText: {
     color: colors.text.inverse,
     fontSize: typography.size.lg,

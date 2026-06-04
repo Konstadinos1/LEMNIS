@@ -8,57 +8,79 @@ import type { Thread } from '@/types/message';
 export default function ChatsScreen() {
   const threads = useChatStore((s) => Object.values(s.threads));
 
-  function openThread(threadId: string) {
-    router.push(`/(tabs)/chats/${threadId}`);
-  }
-
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.title}>Messages</Text>
+        <Pressable
+          style={styles.newBtn}
+          onPress={() => router.push('/(tabs)/chats/new')}
+        >
+          <Text style={styles.newBtnText}>+</Text>
+        </Pressable>
       </View>
       <FlatList
-        data={threads}
+        data={threads.sort((a, b) => {
+          const ta = a.lastMessage?.timestamp ?? 0;
+          const tb = b.lastMessage?.timestamp ?? 0;
+          return tb - ta;
+        })}
         keyExtractor={(t) => t.id}
-        renderItem={({ item }) => <ThreadRow thread={item} onPress={openThread} />}
+        renderItem={({ item }) => <ThreadRow thread={item} />}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={styles.empty}>No conversations yet.{'\n'}Start one.</Text>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No messages yet</Text>
+            <Text style={styles.emptyBody}>
+              Start an encrypted conversation by tapping +
+            </Text>
+          </View>
         }
       />
     </SafeAreaView>
   );
 }
 
-function ThreadRow({
-  thread,
-  onPress,
-}: {
-  thread: Thread;
-  onPress: (id: string) => void;
-}) {
+function ThreadRow({ thread }: { thread: Thread }) {
+  const initials = thread.id.slice(0, 2).toUpperCase();
+  const preview =
+    thread.lastMessage?.type === 'text'
+      ? thread.lastMessage.plaintext
+      : thread.lastMessage?.type === 'swap_receipt'
+      ? '🔄 Swap'
+      : '';
+
   return (
-    <Pressable style={styles.row} onPress={() => onPress(thread.id)}>
+    <Pressable
+      style={styles.row}
+      onPress={() => router.push(`/(tabs)/chats/${thread.id}`)}
+    >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>
-          {thread.id.slice(0, 2).toUpperCase()}
-        </Text>
+        <Text style={styles.avatarText}>{initials}</Text>
       </View>
       <View style={styles.rowBody}>
         <Text style={styles.participantText} numberOfLines={1}>
-          {thread.participants.join(', ')}
+          {thread.participants.map((p) => `${p.slice(0, 6)}…${p.slice(-4)}`).join(', ')}
         </Text>
-        {thread.lastMessage?.type === 'text' && (
-          <Text style={styles.preview} numberOfLines={1}>
-            {thread.lastMessage.plaintext}
-          </Text>
-        )}
+        {preview ? (
+          <Text style={styles.preview} numberOfLines={1}>{preview}</Text>
+        ) : null}
       </View>
-      {thread.unreadCount > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{thread.unreadCount}</Text>
-        </View>
-      )}
+      <View style={styles.rowMeta}>
+        {thread.lastMessage ? (
+          <Text style={styles.time}>
+            {new Date(thread.lastMessage.timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Text>
+        ) : null}
+        {thread.unreadCount > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{thread.unreadCount}</Text>
+          </View>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -66,6 +88,9 @@ function ThreadRow({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.base },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
@@ -74,6 +99,20 @@ const styles = StyleSheet.create({
     fontSize: typography.size['2xl'],
     fontWeight: typography.weight.bold as '700',
     color: colors.text.primary,
+  },
+  newBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.brand.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newBtnText: {
+    color: colors.text.inverse,
+    fontSize: typography.size.xl,
+    fontWeight: typography.weight.bold as '700',
+    lineHeight: 36,
   },
   list: { paddingHorizontal: spacing.md },
   row: {
@@ -103,10 +142,9 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.semibold as '600',
     color: colors.text.primary,
   },
-  preview: {
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-  },
+  preview: { fontSize: typography.size.sm, color: colors.text.secondary },
+  rowMeta: { alignItems: 'flex-end', gap: spacing.xs },
+  time: { fontSize: typography.size.xs, color: colors.text.tertiary },
   badge: {
     backgroundColor: colors.brand.primary,
     borderRadius: radius.full,
@@ -121,11 +159,22 @@ const styles = StyleSheet.create({
     fontSize: typography.size.xs,
     fontWeight: typography.weight.bold as '700',
   },
-  empty: {
+  emptyContainer: {
+    paddingTop: spacing['3xl'],
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: {
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold as '600',
+    color: colors.text.primary,
     textAlign: 'center',
-    color: colors.text.tertiary,
+  },
+  emptyBody: {
     fontSize: typography.size.base,
-    marginTop: spacing['3xl'],
-    lineHeight: 26,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 24,
   },
 });
