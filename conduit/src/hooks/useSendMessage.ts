@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useChatStore } from '@/store/chat';
 import { useWalletStore } from '@/store/wallet';
 import { ratchetEncrypt, serializeState, deserializeState } from '@/lib/crypto/doubleRatchet';
@@ -9,24 +9,6 @@ import type { Message } from '@/types/message';
 const storage = new MMKV();
 const WS_BASE = process.env.EXPO_PUBLIC_WS_BASE_URL ?? 'wss://relay.conduit.app';
 
-function getRatchetState(peerId: string) {
-  const raw = storage.getString(`ratchet:${peerId}`);
-  return raw ? deserializeState(raw) : null;
-}
-
-function saveRatchetState(peerId: string, state: ReturnType<typeof deserializeState>) {
-  storage.set(`ratchet:${peerId}`, serializeState(state));
-}
-
-function getSenderKeyState(groupId: string) {
-  const raw = storage.getString(`senderkey:${groupId}`);
-  return raw ? deserializeSenderKey(raw) : null;
-}
-
-function saveSenderKeyState(groupId: string, state: ReturnType<typeof deserializeSenderKey>) {
-  storage.set(`senderkey:${groupId}`, serializeSenderKey(state));
-}
-
 export function useSendMessage(threadId: string, wsRef: React.MutableRefObject<WebSocket | null>) {
   const appendMessage = useChatStore((s) => s.appendMessage);
   const myId = useWalletStore((s) => s.account?.address ?? '');
@@ -36,16 +18,16 @@ export function useSendMessage(threadId: string, wsRef: React.MutableRefObject<W
       if (!text.trim() || !myId) return;
 
       const plainMsg: Message = {
-        id: crypto.randomUUID(),
+        id:        crypto.randomUUID(),
         threadId,
-        senderId: myId,
+        senderId:  myId,
         timestamp: Date.now(),
-        type: 'text',
+        type:      'text',
         ciphertext: '',
-        plaintext: text.trim(),
+        plaintext:  text.trim(),
       };
 
-      // Optimistically append to UI (will be replaced with decrypted version on round-trip)
+      // Optimistic UI — replaced by decrypted echo on relay round-trip
       appendMessage(threadId, plainMsg);
 
       const plaintextBytes = new TextEncoder().encode(JSON.stringify(plainMsg));
@@ -54,45 +36,45 @@ export function useSendMessage(threadId: string, wsRef: React.MutableRefObject<W
       let envelope: string;
       let sessionId: string;
 
-      const skState = getSenderKeyState(threadId);
-      if (skState) {
+      const skRaw = storage.getString(`senderkey:${threadId}`);
+      if (skRaw) {
         // Group path: Sender Keys
-        const { state: nextSK, message } = senderKeyEncrypt(skState, plaintextBytes);
-        saveSenderKeyState(threadId, nextSK);
+        const skState = deserializeSenderKey(skRaw);
+        const { state: nextSK, message } = await senderKeyEncrypt(skState, plaintextBytes);
+        storage.set(`senderkey:${threadId}`, serializeSenderKey(nextSK));
         envelope = JSON.stringify(message);
         sessionId = `sk:${threadId}`;
       } else {
         // 1:1 path: Double Ratchet
-        const ratchet = getRatchetState(threadId);
-        if (!ratchet) return; // session not yet established (need X3DH first)
+        const ratchetRaw = storage.getString(`ratchet:${threadId}`);
+        if (!ratchetRaw) return; // session not yet established — need X3DH first
 
-        const { state: nextRatchet, message } = ratchetEncrypt(ratchet, plaintextBytes, ad);
-        saveRatchetState(threadId, nextRatchet);
+        const ratchet = deserializeState(ratchetRaw);
+        const { state: nextRatchet, message } = await ratchetEncrypt(ratchet, plaintextBytes, ad);
+        storage.set(`ratchet:${threadId}`, serializeState(nextRatchet));
         envelope = JSON.stringify({
           header: {
             dh: Array.from(message.header.dh),
             pn: message.header.pn,
-            n: message.header.n,
+            n:  message.header.n,
           },
           ciphertext: {
-            iv: Array.from(message.ciphertext.iv),
-            tag: Array.from(message.ciphertext.tag),
+            iv:         Array.from(message.ciphertext.iv),
+            tag:        Array.from(message.ciphertext.tag),
             ciphertext: Array.from(message.ciphertext.ciphertext),
           },
         });
         sessionId = `dr:${threadId}`;
       }
 
-      // Send ciphertext to relay — relay never sees plaintext
-      wsRef.current?.send(
-        JSON.stringify({
-          topic: `thread:${threadId}`,
-          event: 'send_message',
-          payload: { envelope, session_id: sessionId },
-          ref: crypto.randomUUID(),
-        })
-      );
+      // Relay only ever sees ciphertext
+      wsRef.current?.send(JSON.stringify({
+        topic:   `thread:${threadId}`,
+        event:   'send_message',
+        payload: { envelope, session_id: sessionId },
+        ref:     crypto.randomUUID(),
+      }));
     },
-    [threadId, myId, appendMessage, wsRef]
+    [threadId, myId, appendMessage, wsRef],
   );
 }

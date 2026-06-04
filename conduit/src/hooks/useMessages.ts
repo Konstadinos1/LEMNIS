@@ -15,10 +15,10 @@ const WS_BASE = process.env.EXPO_PUBLIC_WS_BASE_URL ?? 'wss://relay.conduit.app'
  */
 export function useThreadMessages(
   threadId: string,
-  wsRef: React.MutableRefObject<WebSocket | null>
+  wsRef: React.MutableRefObject<WebSocket | null>,
 ) {
   const appendMessage = useChatStore((s) => s.appendMessage);
-  const upsertThread = useChatStore((s) => s.upsertThread);
+  const upsertThread  = useChatStore((s) => s.upsertThread);
 
   useEffect(() => {
     if (!threadId) return;
@@ -28,64 +28,79 @@ export function useThreadMessages(
 
     ws.onopen = () => {
       ws.send(JSON.stringify({
-        topic: `thread:${threadId}`,
-        event: 'phx_join',
+        topic:   `thread:${threadId}`,
+        event:   'phx_join',
         payload: {},
-        ref: '1',
+        ref:     '1',
       }));
     };
 
     ws.onmessage = (evt) => {
-      try {
-        const frame = JSON.parse(evt.data as string) as {
-          event: string;
-          payload: { envelope: string; session_id: string };
-        };
-        if (frame.event !== 'new_message') return;
+      // Decryption is async — run in a void async IIFE so the handler can await
+      void (async () => {
+        try {
+          const frame = JSON.parse(evt.data as string) as {
+            event:   string;
+            payload: { envelope: string; session_id: string };
+          };
+          if (frame.event !== 'new_message') return;
 
-        const { envelope, session_id } = frame.payload;
-        let plaintext: string;
+          const { envelope, session_id } = frame.payload;
+          let plaintext: string;
 
-        if (session_id.startsWith('sk:')) {
-          // Sender Key (group)
-          const groupId = session_id.slice(3);
-          const skRaw = storage.getString(`senderkey:${groupId}`);
-          if (!skRaw) return;
-          const skState = deserializeSenderKey(skRaw);
-          const msg = JSON.parse(envelope);
-          const { state: nextSK, plaintext: pt } = senderKeyDecrypt(skState, msg);
-          storage.set(`senderkey:${groupId}`, serializeSenderKey(nextSK));
-          plaintext = new TextDecoder().decode(pt);
-        } else {
-          // Double Ratchet (1:1)
-          const peerId = session_id.slice(3); // dr:<threadId>
-          const stateRaw = storage.getString(`ratchet:${peerId}`);
-          if (!stateRaw) return;
-          const ratchet = deserializeState(stateRaw);
-          const msg = JSON.parse(envelope);
-          const ad = new TextEncoder().encode(threadId);
-          const { state: nextRatchet, plaintext: pt } = ratchetDecrypt(ratchet, msg, ad);
-          storage.set(`ratchet:${peerId}`, serializeState(nextRatchet));
-          plaintext = new TextDecoder().decode(pt);
+          if (session_id.startsWith('sk:')) {
+            // Sender Key (group)
+            const groupId = session_id.slice(3);
+            const skRaw = storage.getString(`senderkey:${groupId}`);
+            if (!skRaw) return;
+            const skState = deserializeSenderKey(skRaw);
+            const msg = JSON.parse(envelope);
+            const { state: nextSK, plaintext: pt } = await senderKeyDecrypt(skState, msg);
+            storage.set(`senderkey:${groupId}`, serializeSenderKey(nextSK));
+            plaintext = new TextDecoder().decode(pt);
+          } else {
+            // Double Ratchet (1:1)
+            const peerId = session_id.slice(3); // dr:<threadId>
+            const stateRaw = storage.getString(`ratchet:${peerId}`);
+            if (!stateRaw) return;
+            const ratchet = deserializeState(stateRaw);
+            const msg = JSON.parse(envelope);
+            // Reconstruct typed arrays from JSON-serialised number arrays
+            const typedMsg = {
+              header: {
+                dh: new Uint8Array(msg.header.dh),
+                pn: msg.header.pn,
+                n:  msg.header.n,
+              },
+              ciphertext: {
+                iv:         new Uint8Array(msg.ciphertext.iv),
+                tag:        new Uint8Array(msg.ciphertext.tag),
+                ciphertext: new Uint8Array(msg.ciphertext.ciphertext),
+              },
+            };
+            const ad = new TextEncoder().encode(threadId);
+            const { state: nextRatchet, plaintext: pt } = await ratchetDecrypt(ratchet, typedMsg, ad);
+            storage.set(`ratchet:${peerId}`, serializeState(nextRatchet));
+            plaintext = new TextDecoder().decode(pt);
+          }
+
+          const message = JSON.parse(plaintext) as Message;
+          appendMessage(threadId, message);
+
+          upsertThread({
+            id:           threadId,
+            participants: [],
+            lastMessage:  message,
+            unreadCount:  1,
+          });
+        } catch {
+          // Decryption failures are silently dropped — never leak partial state
         }
-
-        const message = JSON.parse(plaintext) as Message;
-        appendMessage(threadId, message);
-
-        // Keep thread list in sync
-        upsertThread({
-          id: threadId,
-          participants: [],
-          lastMessage: message,
-          unreadCount: 1,
-        });
-      } catch {
-        // Decryption failures are silently dropped — never leak partial state
-      }
+      })();
     };
 
     ws.onerror = () => {
-      // Reconnect is handled by the caller via retry logic in production
+      // Reconnect handled by caller via retry logic in production
     };
 
     return () => {

@@ -14,11 +14,10 @@
 
 import * as SecureStore from 'expo-secure-store';
 import {
-  x25519KeyPair,
-  ed25519KeyPair,
+  x25519KeyPairAsync,
+  ed25519KeyPairAsync,
   toBase64,
   fromBase64,
-  secureRandom,
   type X25519KeyPair,
   type Ed25519KeyPair,
 } from './primitives';
@@ -38,11 +37,13 @@ const SE_OPTIONS: SecureStore.SecureStoreOptions = {
 };
 
 export async function generateAndStoreIdentity(): Promise<IdentityKeyBundle> {
-  const identityKeyDh = x25519KeyPair();
-  const identityKeyEd = ed25519KeyPair();
+  const [identityKeyDh, identityKeyEd, ...oneTimePreKeys] = await Promise.all([
+    x25519KeyPairAsync(),
+    ed25519KeyPairAsync(),
+    ...Array.from({ length: 10 }, () => x25519KeyPairAsync()),
+  ]);
   const registrationId = (Math.random() * 0x3fff | 0) + 1;
-  const signedPreKey = generateSignedPreKey(identityKeyEd, 1);
-  const oneTimePreKeys = Array.from({ length: 10 }, (_, i) => x25519KeyPair());
+  const signedPreKey = await generateSignedPreKey(identityKeyEd, 1);
 
   await SecureStore.setItemAsync(KEYS.IDENTITY_DH, JSON.stringify({
     pub: toBase64(identityKeyDh.publicKey),

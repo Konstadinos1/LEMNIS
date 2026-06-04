@@ -63,10 +63,10 @@ export default function NewThreadScreen() {
       if (!myIdentity) throw new Error('Local identity not found. Please restart the app.');
 
       // X3DH session establishment
-      const { sharedSecret, initMessage } = x3dhInitiate(myIdentity, bundle);
+      const { sharedSecret, initMessage } = await x3dhInitiate(myIdentity, bundle);
 
       // Initialise Double Ratchet (Alice side)
-      const ratchetState = ratchetInitAlice(sharedSecret, bundle.signedPreKey);
+      const ratchetState = await ratchetInitAlice(sharedSecret, bundle.signedPreKey);
       storage.set(`ratchet:${peer}`, serializeState(ratchetState));
 
       // Create the thread in local state

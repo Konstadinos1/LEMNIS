@@ -3,82 +3,84 @@
  * Each group member has a Sender Key — a symmetric ratchet chain.
  * Messages are encrypted once under the sender's key and broadcast.
  * Membership changes trigger a sender-key rotation.
+ *
+ * All operations are async — they route through the Rust native module
+ * (conduit-crypto) when available, with a JS fallback.
  */
 
 import {
-  hkdf,
-  hmacSha256,
-  aesGcmEncrypt,
-  aesGcmDecrypt,
-  secureRandom,
+  hkdfAsync,
+  hmacSha256Async,
+  aesGcmEncryptAsync,
+  aesGcmDecryptAsync,
+  secureRandomAsync,
   toBase64,
   fromBase64,
   type AesGcmCiphertext,
 } from './primitives';
 
-const INFO_SK = 'SenderKeyRatchet';
+const INFO_SK_ENCRYPT = 'SenderKeyEncrypt';
 
 export interface SenderKeyState {
-  chainKey: Uint8Array;  // 32 bytes — ratchets on each message
+  chainKey:  Uint8Array;  // 32 bytes — ratchets on each message
   iteration: number;
-  senderId: string;
+  senderId:  string;
 }
 
 export interface SenderKeyMessage {
-  senderId: string;
-  iteration: number;
+  senderId:   string;
+  iteration:  number;
   ciphertext: AesGcmCiphertext;
 }
 
-function ratchetSenderKey(ck: Uint8Array): [Uint8Array, Uint8Array] {
-  const mk = hmacSha256(ck, new Uint8Array([0x01]));
-  const ckNext = hmacSha256(ck, new Uint8Array([0x02]));
+async function ratchetSenderKey(ck: Uint8Array): Promise<[Uint8Array, Uint8Array]> {
+  const [mk, ckNext] = await Promise.all([
+    hmacSha256Async(ck, new Uint8Array([0x01])),
+    hmacSha256Async(ck, new Uint8Array([0x02])),
+  ]);
   return [ckNext, mk];
 }
 
-export function createSenderKeyState(senderId: string): SenderKeyState {
-  return {
-    chainKey: secureRandom(32),
-    iteration: 0,
-    senderId,
-  };
+export async function createSenderKeyState(senderId: string): Promise<SenderKeyState> {
+  const chainKey = await secureRandomAsync(32);
+  return { chainKey, iteration: 0, senderId };
 }
 
-export function senderKeyEncrypt(
+export async function senderKeyEncrypt(
   state: SenderKeyState,
-  plaintext: Uint8Array
-): { state: SenderKeyState; message: SenderKeyMessage } {
-  const [chainKey, mk] = ratchetSenderKey(state.chainKey);
-  const encKey = hkdf(mk, 32, new Uint8Array(32), 'SenderKeyEncrypt');
+  plaintext: Uint8Array,
+): Promise<{ state: SenderKeyState; message: SenderKeyMessage }> {
+  const [chainKey, mk] = await ratchetSenderKey(state.chainKey);
+  const encKey = await hkdfAsync(mk, 32, new Uint8Array(32), INFO_SK_ENCRYPT);
   const ad = new TextEncoder().encode(`${state.senderId}:${state.iteration}`);
-  const ciphertext = aesGcmEncrypt(encKey, plaintext, ad);
+  const ciphertext = await aesGcmEncryptAsync(encKey, plaintext, ad);
 
   return {
-    state: { ...state, chainKey, iteration: state.iteration + 1 },
+    state:   { ...state, chainKey, iteration: state.iteration + 1 },
     message: { senderId: state.senderId, iteration: state.iteration, ciphertext },
   };
 }
 
-export function senderKeyDecrypt(
+export async function senderKeyDecrypt(
   state: SenderKeyState,
-  message: SenderKeyMessage
-): { state: SenderKeyState; plaintext: Uint8Array } {
+  message: SenderKeyMessage,
+): Promise<{ state: SenderKeyState; plaintext: Uint8Array }> {
   if (message.senderId !== state.senderId) throw new Error('Sender ID mismatch');
 
-  // Fast-forward ratchet if iterations were skipped
+  // Fast-forward ratchet for skipped messages
   let s = state;
   while (s.iteration < message.iteration) {
-    const [ck] = ratchetSenderKey(s.chainKey);
+    const [ck] = await ratchetSenderKey(s.chainKey);
     s = { ...s, chainKey: ck, iteration: s.iteration + 1 };
   }
 
-  const [chainKey, mk] = ratchetSenderKey(s.chainKey);
-  const encKey = hkdf(mk, 32, new Uint8Array(32), 'SenderKeyEncrypt');
+  const [chainKey, mk] = await ratchetSenderKey(s.chainKey);
+  const encKey = await hkdfAsync(mk, 32, new Uint8Array(32), INFO_SK_ENCRYPT);
   const ad = new TextEncoder().encode(`${message.senderId}:${message.iteration}`);
-  const plaintext = aesGcmDecrypt(encKey, message.ciphertext, ad);
+  const plaintext = await aesGcmDecryptAsync(encKey, message.ciphertext, ad);
 
   return {
-    state: { ...s, chainKey, iteration: s.iteration + 1 },
+    state:    { ...s, chainKey, iteration: s.iteration + 1 },
     plaintext,
   };
 }
