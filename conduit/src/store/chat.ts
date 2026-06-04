@@ -17,6 +17,8 @@ interface ChatState {
   ) => void;
   setActiveThread: (threadId: string | null) => void;
   markRead: (threadId: string) => void;
+  /** Update lastMessage + increment unreadCount without overwriting other thread fields. */
+  touchLastMessage: (threadId: string, message: Message) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -60,4 +62,20 @@ export const useChatStore = create<ChatState>((set) => ({
         [threadId]: { ...s.threads[threadId], unreadCount: 0 },
       },
     })),
+
+  touchLastMessage: (threadId, message) =>
+    set((s) => {
+      const existing = s.threads[threadId];
+      if (!existing) return s;
+      return {
+        threads: {
+          ...s.threads,
+          [threadId]: {
+            ...existing,
+            lastMessage: message,
+            unreadCount: existing.unreadCount + 1,
+          },
+        },
+      };
+    }),
 }));

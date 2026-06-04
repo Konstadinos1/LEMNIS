@@ -69,7 +69,8 @@ export default function NewThreadScreen() {
       const { sharedSecret, initMessage } = await x3dhInitiate(myIdentity, bundle);
 
       // Initialise Double Ratchet (Alice side)
-      const ratchetState = await ratchetInitAlice(sharedSecret, bundle.signedPreKey as unknown as Uint8Array);
+      const spkPub = new Uint8Array(bundle.signedPreKey as unknown as number[]);
+      const ratchetState = await ratchetInitAlice(sharedSecret, spkPub);
       storage.set(`ratchet:${threadId}`, serializeState(ratchetState));
 
       // Store X3DH init message — delivered inside the first message envelope

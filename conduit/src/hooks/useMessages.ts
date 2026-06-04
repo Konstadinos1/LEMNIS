@@ -19,8 +19,8 @@ export function useThreadMessages(
   threadId: string,
   wsRef: React.MutableRefObject<WebSocket | null>,
 ) {
-  const appendMessage = useChatStore((s) => s.appendMessage);
-  const upsertThread  = useChatStore((s) => s.upsertThread);
+  const appendMessage   = useChatStore((s) => s.appendMessage);
+  const touchLastMessage = useChatStore((s) => s.touchLastMessage);
 
   useEffect(() => {
     if (!threadId) return;
@@ -113,13 +113,7 @@ export function useThreadMessages(
 
           const message = JSON.parse(plaintext) as Message;
           appendMessage(threadId, message);
-
-          upsertThread({
-            id:           threadId,
-            participants: [],
-            lastMessage:  message,
-            unreadCount:  1,
-          });
+          touchLastMessage(threadId, message);
         } catch {
           // Decryption failures are silently dropped — never leak partial state
         }
@@ -134,5 +128,5 @@ export function useThreadMessages(
       ws.close();
       wsRef.current = null;
     };
-  }, [threadId, appendMessage, upsertThread, wsRef]);
+  }, [threadId, appendMessage, touchLastMessage, wsRef]);
 }
