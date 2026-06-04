@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { useChatStore } from '@/store/chat';
-import { ratchetDecrypt, deserializeState, serializeState } from '@/lib/crypto/doubleRatchet';
+import { ratchetDecrypt, ratchetInitBob, deserializeState, serializeState } from '@/lib/crypto/doubleRatchet';
 import { senderKeyDecrypt, deserializeSenderKey, serializeSenderKey } from '@/lib/crypto/senderKey';
+import { x3dhRespond, type X3DHInitMessage } from '@/lib/crypto/x3dh';
+import { loadIdentity } from '@/lib/crypto/identity';
 import { MMKV } from 'react-native-mmkv';
 import type { Message } from '@/types/message';
 
@@ -61,10 +63,8 @@ export function useThreadMessages(
           } else {
             // Double Ratchet (1:1)
             const peerId = session_id.slice(3); // dr:<threadId>
-            const stateRaw = storage.getString(`ratchet:${peerId}`);
-            if (!stateRaw) return;
-            const ratchet = deserializeState(stateRaw);
             const msg = JSON.parse(envelope);
+
             // Reconstruct typed arrays from JSON-serialised number arrays
             const typedMsg = {
               header: {
@@ -78,8 +78,35 @@ export function useThreadMessages(
                 ciphertext: new Uint8Array(msg.ciphertext.ciphertext),
               },
             };
+
+            let stateRaw = storage.getString(`ratchet:${peerId}`);
+
+            if (msg.type === 'x3dh_init' && !stateRaw) {
+              // First message from Alice — establish the X3DH session (Bob side)
+              const myIdentity = await loadIdentity();
+              if (!myIdentity) return;
+
+              const initMsg: X3DHInitMessage = {
+                identityKeyDh:   new Uint8Array(msg.init.identityKeyDh),
+                ephemeralKey:    new Uint8Array(msg.init.ephemeralKey),
+                signedPreKeyId:  msg.init.signedPreKeyId,
+                oneTimePreKeyId: msg.init.oneTimePreKeyId ?? undefined,
+              };
+
+              const sharedSecret = await x3dhRespond(myIdentity, initMsg);
+              const bobRatchet = ratchetInitBob(sharedSecret, myIdentity.signedPreKey.keyPair);
+              stateRaw = serializeState(bobRatchet);
+              storage.set(`ratchet:${peerId}`, stateRaw);
+            }
+
+            if (!stateRaw) return;
+
             const ad = new TextEncoder().encode(threadId);
-            const { state: nextRatchet, plaintext: pt } = await ratchetDecrypt(ratchet, typedMsg, ad);
+            const { state: nextRatchet, plaintext: pt } = await ratchetDecrypt(
+              deserializeState(stateRaw),
+              typedMsg,
+              ad,
+            );
             storage.set(`ratchet:${peerId}`, serializeState(nextRatchet));
             plaintext = new TextDecoder().decode(pt);
           }

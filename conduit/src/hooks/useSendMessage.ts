@@ -56,7 +56,8 @@ export function useSendMessage(
         const ratchet = deserializeState(ratchetRaw);
         const { state: nextRatchet, message } = await ratchetEncrypt(ratchet, plaintextBytes, ad);
         storage.set(`ratchet:${threadId}`, serializeState(nextRatchet));
-        envelope = JSON.stringify({
+
+        const msgBody = {
           header: {
             dh: Array.from(message.header.dh),
             pn: message.header.pn,
@@ -67,7 +68,18 @@ export function useSendMessage(
             tag:        Array.from(message.ciphertext.tag),
             ciphertext: Array.from(message.ciphertext.ciphertext),
           },
-        });
+        };
+
+        // On the first message in a 1:1 thread, piggyback the X3DH init so
+        // the recipient can establish their ratchet session.
+        const x3dhInitRaw = storage.getString(`x3dhInit:${threadId}`);
+        if (x3dhInitRaw) {
+          storage.delete(`x3dhInit:${threadId}`);
+          envelope = JSON.stringify({ type: 'x3dh_init', init: JSON.parse(x3dhInitRaw), ...msgBody });
+        } else {
+          envelope = JSON.stringify(msgBody);
+        }
+
         sessionId = `dr:${threadId}`;
       }
 

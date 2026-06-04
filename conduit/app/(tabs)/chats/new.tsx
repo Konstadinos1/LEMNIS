@@ -62,19 +62,28 @@ export default function NewThreadScreen() {
       const myIdentity = await loadIdentity();
       if (!myIdentity) throw new Error('Local identity not found. Please restart the app.');
 
+      // Compute thread ID first — used as MMKV key prefix
+      const threadId = [myAddress.toLowerCase(), peer].sort().join('-');
+
       // X3DH session establishment
       const { sharedSecret, initMessage } = await x3dhInitiate(myIdentity, bundle);
 
       // Initialise Double Ratchet (Alice side)
-      const ratchetState = await ratchetInitAlice(sharedSecret, bundle.signedPreKey);
-      storage.set(`ratchet:${peer}`, serializeState(ratchetState));
+      const ratchetState = await ratchetInitAlice(sharedSecret, bundle.signedPreKey as unknown as Uint8Array);
+      storage.set(`ratchet:${threadId}`, serializeState(ratchetState));
+
+      // Store X3DH init message — delivered inside the first message envelope
+      // so Bob can run x3dhRespond() and initialise his ratchet.
+      storage.set(`x3dhInit:${threadId}`, JSON.stringify({
+        identityKeyDh:   Array.from(initMessage.identityKeyDh),
+        ephemeralKey:    Array.from(initMessage.ephemeralKey),
+        signedPreKeyId:  initMessage.signedPreKeyId,
+        oneTimePreKeyId: initMessage.oneTimePreKeyId ?? null,
+      }));
 
       // Derive peer's relay fingerprint from their Ed25519 identity key
       const peerFingerprint = fingerprintFromBytes(bundle.identityKeyEd as unknown as number[]);
       const myFingerprint = await getMyFingerprint();
-
-      // Create the thread in local state
-      const threadId = [myAddress.toLowerCase(), peer].sort().join('-');
       upsertThread({
         id: threadId,
         participants: [myAddress, peer],
