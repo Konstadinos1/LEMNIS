@@ -54,7 +54,11 @@
         "com.apple.developer.associated-domains": [
           "webcredentials:conduit.app",
           "applinks:conduit.app"
-        ]
+        ],
+        "com.apple.security.application-groups": [
+          "group.com.conduit.app"
+        ],
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -80,7 +84,9 @@
         }
       ],
       "react-native-mmkv",
-      "./plugins/withCertificatePinning"
+      "./plugins/withCertificatePinning",
+      "./plugins/withNotificationServiceExtension",
+      "./plugins/withFirebaseMessagingService"
     ],
     "experiments": {
       "typedRoutes": true
