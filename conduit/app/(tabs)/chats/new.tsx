@@ -15,7 +15,7 @@ import { useChatStore } from '@/store/chat';
 import { useWalletStore } from '@/store/wallet';
 import { ratchetInitAlice } from '@/lib/crypto/doubleRatchet';
 import { x3dhInitiate, type PreKeyBundle } from '@/lib/crypto/x3dh';
-import { loadIdentity, fingerprintFromBytes, getMyFingerprint } from '@/lib/crypto/identity';
+import { loadIdentity, fingerprintFromDhKeyAsync, getMyFingerprint } from '@/lib/crypto/identity';
 import { MMKV } from 'react-native-mmkv';
 import { serializeState } from '@/lib/crypto/doubleRatchet';
 import { Button } from '@/components/ui/Button';
@@ -83,7 +83,7 @@ export default function NewThreadScreen() {
       }));
 
       // Derive peer's relay fingerprint from their Ed25519 identity key
-      const peerFingerprint = fingerprintFromBytes(bundle.identityKeyEd as unknown as number[]);
+      const peerFingerprint = await fingerprintFromDhKeyAsync(bundle.identityKeyDh as unknown as number[]);
       const myFingerprint = await getMyFingerprint();
       upsertThread({
         id: threadId,

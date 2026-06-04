@@ -16,7 +16,9 @@ import * as SecureStore from 'expo-secure-store';
 import {
   x25519KeyPairAsync,
   ed25519KeyPairAsync,
+  sha256Async,
   toBase64,
+  toHex,
   fromBase64,
   type X25519KeyPair,
   type Ed25519KeyPair,
@@ -125,18 +127,28 @@ export async function hasIdentity(): Promise<boolean> {
   return raw !== null;
 }
 
-/** Return the hex-encoded Ed25519 public key used as the relay identity fingerprint. */
+/**
+ * Return the relay identity fingerprint: lowercase_hex(SHA-256(X25519 DH public key)).
+ * This matches how the relay derives fingerprints in Relay.Prekeys.derive_fingerprint/1.
+ */
 export async function getMyFingerprint(): Promise<string | null> {
-  const raw = await SecureStore.getItemAsync(KEYS.IDENTITY_ED);
+  const raw = await SecureStore.getItemAsync(KEYS.IDENTITY_DH);
   if (!raw) return null;
   const { pub } = JSON.parse(raw) as { pub: string };
-  const bytes = fromBase64(pub);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const hash = await sha256Async(fromBase64(pub));
+  return toHex(hash);
 }
 
-/** Derive a peer's relay fingerprint from their raw Ed25519 public key bytes. */
-export function fingerprintFromBytes(edPublicKey: Uint8Array | number[]): string {
-  return Array.from(edPublicKey).map((b) => b.toString(16).padStart(2, '0')).join('');
+/**
+ * Derive a peer's relay fingerprint from their X25519 DH public key bytes
+ * (as returned by the prekey bundle endpoint — a JSON number[]).
+ */
+export async function fingerprintFromDhKeyAsync(dhPublicKey: Uint8Array | number[]): Promise<string> {
+  const bytes = dhPublicKey instanceof Uint8Array
+    ? dhPublicKey
+    : new Uint8Array(dhPublicKey as number[]);
+  const hash = await sha256Async(bytes);
+  return toHex(hash);
 }
 
 /** Safety number — 60-digit decimal string from the two identity keys. */

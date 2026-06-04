@@ -4,6 +4,8 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { createSmartAccount } from '@/lib/wallet/smartAccount';
 import { generateAndStoreIdentity } from '@/lib/crypto/identity';
+import { acquireApiSession } from '@/lib/api/auth';
+import { apiPost } from '@/lib/api/client';
 import { useWalletStore } from '@/store/wallet';
 import { Button } from '@/components/ui/Button';
 import { colors, spacing, typography } from '@/theme/tokens';
@@ -29,26 +31,28 @@ export default function CreateWalletScreen() {
       const account = await createSmartAccount();
       setAccount(account);
 
-      // Step 3: Register pre-key bundle with relay (fire-and-forget)
-      setStep('Registering with relay…');
-      fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/api/prekeys/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identityKey: Array.from(identity.identityKeyDh.publicKey),
-          registrationId: identity.registrationId,
-          signedPreKey: {
-            keyId: identity.signedPreKey.keyId,
-            publicKey: Array.from(identity.signedPreKey.keyPair.publicKey),
-            signature: Array.from(identity.signedPreKey.signature),
-          },
-          kyberPreKey: { keyId: 0, publicKey: [], signature: [] }, // PQXDH: TODO
-          oneTimePreKeys: identity.oneTimePreKeys.slice(0, 5).map((k, i) => ({
-            keyId: i,
-            publicKey: Array.from(k.publicKey),
-          })),
-        }),
-      }).catch(() => {}); // non-blocking
+      // Step 3: Authenticate with the API to get a session JWT
+      setStep('Authenticating with relay…');
+      await acquireApiSession();
+
+      // Step 4: Upload prekey bundle — required for others to initiate sessions
+      setStep('Registering encrypted identity…');
+      await apiPost('/api/prekeys/register', {
+        identityKeyDh: Array.from(identity.identityKeyDh.publicKey),
+        identityKeyEd: Array.from(identity.identityKeyEd.publicKey),
+        registrationId: identity.registrationId,
+        deviceId: 1,
+        signedPreKey: {
+          keyId: identity.signedPreKey.keyId,
+          publicKey: Array.from(identity.signedPreKey.keyPair.publicKey),
+          signature: Array.from(identity.signedPreKey.signature),
+        },
+        kyberPreKey: { keyId: 0, publicKey: [], signature: [] }, // PQXDH: TODO
+        oneTimePreKeys: identity.oneTimePreKeys.slice(0, 10).map((k, i) => ({
+          keyId: i,
+          publicKey: Array.from(k.publicKey),
+        })),
+      });
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setState('done');

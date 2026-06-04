@@ -4,6 +4,7 @@ import { ratchetDecrypt, ratchetInitBob, deserializeState, serializeState } from
 import { senderKeyDecrypt, deserializeSenderKey, serializeSenderKey } from '@/lib/crypto/senderKey';
 import { x3dhRespond, type X3DHInitMessage } from '@/lib/crypto/x3dh';
 import { loadIdentity } from '@/lib/crypto/identity';
+import { createRelayJwt } from '@/lib/api/relayAuth';
 import { MMKV } from 'react-native-mmkv';
 import type { Message } from '@/types/message';
 
@@ -25,17 +26,32 @@ export function useThreadMessages(
   useEffect(() => {
     if (!threadId) return;
 
-    const ws = new WebSocket(`${WS_BASE}/socket/websocket`);
-    wsRef.current = ws;
+    let cancelled = false;
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        topic:   `thread:${threadId}`,
-        event:   'phx_join',
-        payload: {},
-        ref:     '1',
-      }));
-    };
+    void (async () => {
+      // Create the EdDSA JWT before opening the socket — relay rejects connections
+      // without a valid signed token (UserSocket.connect + ThreadChannel.join).
+      let relayJwt: string;
+      try {
+        relayJwt = await createRelayJwt();
+      } catch {
+        return; // identity not available yet — caller should retry after onboarding
+      }
+
+      if (cancelled) return;
+
+      const url = `${WS_BASE}/socket/websocket?token=${encodeURIComponent(relayJwt)}`;
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          topic:   `thread:${threadId}`,
+          event:   'phx_join',
+          payload: { token: relayJwt },
+          ref:     '1',
+        }));
+      };
 
     ws.onmessage = (evt) => {
       // Decryption is async — run in a void async IIFE so the handler can await
@@ -120,12 +136,14 @@ export function useThreadMessages(
       })();
     };
 
-    ws.onerror = () => {
-      // Reconnect handled by caller via retry logic in production
-    };
+      ws.onerror = () => {
+        // Reconnect handled by caller via retry logic in production
+      };
+    })();
 
     return () => {
-      ws.close();
+      cancelled = true;
+      wsRef.current?.close();
       wsRef.current = null;
     };
   }, [threadId, appendMessage, touchLastMessage, wsRef]);

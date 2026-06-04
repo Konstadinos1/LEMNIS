@@ -289,6 +289,22 @@ export function ed25519Verify(
   return nacl.sign.detached.verify(message, signature, publicKey);
 }
 
+// ─── SHA-256 ─────────────────────────────────────────────────────────────────
+
+export async function sha256Async(data: Uint8Array): Promise<Uint8Array> {
+  if (_native) {
+    return fromBase64(await _native.sha256(toBase64(data)));
+  }
+  return sha256(data);
+}
+
+export function sha256(data: Uint8Array): Uint8Array {
+  if (!qc) throw new Error('react-native-quick-crypto unavailable');
+  const hash = qc.createHash('sha256');
+  hash.update(data as Buffer);
+  return new Uint8Array(hash.digest() as Buffer);
+}
+
 // ─── Constant-time equality ──────────────────────────────────────────────────
 
 export async function constantTimeEqualAsync(a: Uint8Array, b: Uint8Array): Promise<boolean> {
