@@ -9,7 +9,11 @@ import type { Message } from '@/types/message';
 const storage = new MMKV();
 const WS_BASE = process.env.EXPO_PUBLIC_WS_BASE_URL ?? 'wss://relay.conduit.app';
 
-export function useSendMessage(threadId: string, wsRef: React.MutableRefObject<WebSocket | null>) {
+export function useSendMessage(
+  threadId: string,
+  wsRef: React.MutableRefObject<WebSocket | null>,
+  recipientFingerprints?: string[],
+) {
   const appendMessage = useChatStore((s) => s.appendMessage);
   const myId = useWalletStore((s) => s.account?.address ?? '');
 
@@ -68,13 +72,17 @@ export function useSendMessage(threadId: string, wsRef: React.MutableRefObject<W
       }
 
       // Relay only ever sees ciphertext
+      const payload: Record<string, unknown> = { envelope, session_id: sessionId };
+      if (recipientFingerprints && recipientFingerprints.length > 0) {
+        payload.to = recipientFingerprints;
+      }
       wsRef.current?.send(JSON.stringify({
         topic:   `thread:${threadId}`,
         event:   'send_message',
-        payload: { envelope, session_id: sessionId },
+        payload,
         ref:     crypto.randomUUID(),
       }));
     },
-    [threadId, myId, appendMessage, wsRef],
+    [threadId, myId, appendMessage, wsRef, recipientFingerprints],
   );
 }

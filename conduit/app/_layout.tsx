@@ -9,6 +9,7 @@ import { hasIdentity } from '@/lib/crypto/identity';
 import { loadSmartAccount } from '@/lib/wallet/smartAccount';
 import { useWalletStore } from '@/store/wallet';
 import { getSecurityReport } from 'conduit-security';
+import { setupPushNotifications } from '@/hooks/usePushNotifications';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -48,6 +49,8 @@ function AppNavigator() {
         if (!hasId || !account) {
           router.replace('/(auth)/onboarding');
         } else {
+          // Register push token after authentication (non-blocking)
+          void setupPushNotifications();
           router.replace('/(tabs)/chats');
         }
       } catch {

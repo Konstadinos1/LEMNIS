@@ -55,6 +55,9 @@ export type Message =
 export interface Thread {
   id: string;
   participants: string[];
+  /** Relay identity fingerprints (hex Ed25519 pubkey) for each participant.
+   *  Populated when threads are created via X3DH; used to dispatch push notifications. */
+  participantFingerprints?: string[];
   lastMessage?: Message;
   unreadCount: number;
   /** AES-GCM sender key for this thread — held in-memory only, never persisted plaintext. */

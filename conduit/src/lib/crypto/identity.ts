@@ -125,6 +125,20 @@ export async function hasIdentity(): Promise<boolean> {
   return raw !== null;
 }
 
+/** Return the hex-encoded Ed25519 public key used as the relay identity fingerprint. */
+export async function getMyFingerprint(): Promise<string | null> {
+  const raw = await SecureStore.getItemAsync(KEYS.IDENTITY_ED);
+  if (!raw) return null;
+  const { pub } = JSON.parse(raw) as { pub: string };
+  const bytes = fromBase64(pub);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Derive a peer's relay fingerprint from their raw Ed25519 public key bytes. */
+export function fingerprintFromBytes(edPublicKey: Uint8Array | number[]): string {
+  return Array.from(edPublicKey).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** Safety number — 60-digit decimal string from the two identity keys. */
 export function computeSafetyNumber(
   myIdentityKey: Uint8Array,

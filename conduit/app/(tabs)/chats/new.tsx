@@ -15,7 +15,7 @@ import { useChatStore } from '@/store/chat';
 import { useWalletStore } from '@/store/wallet';
 import { ratchetInitAlice } from '@/lib/crypto/doubleRatchet';
 import { x3dhInitiate, type PreKeyBundle } from '@/lib/crypto/x3dh';
-import { loadIdentity } from '@/lib/crypto/identity';
+import { loadIdentity, fingerprintFromBytes, getMyFingerprint } from '@/lib/crypto/identity';
 import { MMKV } from 'react-native-mmkv';
 import { serializeState } from '@/lib/crypto/doubleRatchet';
 import { Button } from '@/components/ui/Button';
@@ -69,11 +69,19 @@ export default function NewThreadScreen() {
       const ratchetState = await ratchetInitAlice(sharedSecret, bundle.signedPreKey);
       storage.set(`ratchet:${peer}`, serializeState(ratchetState));
 
+      // Derive peer's relay fingerprint from their Ed25519 identity key
+      const peerFingerprint = fingerprintFromBytes(bundle.identityKeyEd as unknown as number[]);
+      const myFingerprint = await getMyFingerprint();
+
       // Create the thread in local state
       const threadId = [myAddress.toLowerCase(), peer].sort().join('-');
       upsertThread({
         id: threadId,
         participants: [myAddress, peer],
+        participantFingerprints: [
+          ...(myFingerprint ? [myFingerprint] : []),
+          peerFingerprint,
+        ],
         unreadCount: 0,
       });
 

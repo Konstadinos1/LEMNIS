@@ -38,7 +38,7 @@ export default function ThreadScreen() {
     markRead(threadId);
   }, [threadId, markRead]);
 
-  const sendMessage = useSendMessage(threadId, wsRef);
+  const sendMessage = useSendMessage(threadId, wsRef, thread?.participantFingerprints);
 
   async function handleSend() {
     const text = draft.trim();
