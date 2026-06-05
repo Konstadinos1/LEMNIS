@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { StyleSheet, Text } from 'react-native';
 import { colors, spacing, typography } from '@/theme/tokens';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 function Icon({ label, focused }: { label: string; focused: boolean }) {
   const icons: Record<string, [string, string]> = {
@@ -19,6 +20,8 @@ function Icon({ label, focused }: { label: string; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  usePushNotifications();
+
   return (
     <Tabs
       screenOptions={({ route }) => ({

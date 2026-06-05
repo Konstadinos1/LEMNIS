@@ -41,7 +41,7 @@ export async function setupPushNotifications(): Promise<void> {
 
     // Get the raw device token (APNs on iOS, FCM on Android)
     const tokenData = await Notifications.getDevicePushTokenAsync();
-    const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+    const platform: 'apns' | 'fcm' = Platform.OS === 'ios' ? 'apns' : 'fcm';
 
     await registerPushToken(tokenData.data, platform);
   } catch {

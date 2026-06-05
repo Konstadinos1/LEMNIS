@@ -7,17 +7,18 @@ import {
   ScrollView,
   Pressable,
   Alert,
-  Switch,
+  Clipboard,
 } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { useWalletStore } from '@/store/wallet';
-import { computeSafetyNumber } from '@/lib/crypto/identity';
+import { clearSessionJwt } from '@/lib/api/client';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
 
 export default function SettingsScreen() {
   const account = useWalletStore((s) => s.account);
+  const myFingerprint = useWalletStore((s) => s.myFingerprint);
   const reset = useWalletStore((s) => s.reset);
 
   function confirmReset() {
@@ -30,9 +31,18 @@ export default function SettingsScreen() {
           text: 'Reset',
           style: 'destructive',
           onPress: async () => {
+            // Clear identity keys
+            await SecureStore.deleteItemAsync('conduit.identity.dh');
+            await SecureStore.deleteItemAsync('conduit.identity.ed');
+            await SecureStore.deleteItemAsync('conduit.identity.spk');
+            await SecureStore.deleteItemAsync('conduit.identity.regId');
+            // Clear wallet
             await SecureStore.deleteItemAsync('conduit.wallet.address');
             await SecureStore.deleteItemAsync('conduit.passkey.credentialId');
-            await SecureStore.deleteItemAsync('conduit.identity.dh');
+            // Clear session + push
+            await clearSessionJwt();
+            await SecureStore.deleteItemAsync('conduit.notif.previewKey');
+            await SecureStore.deleteItemAsync('conduit.notif.pushToken');
             reset();
             router.replace('/(auth)/onboarding');
           },
@@ -41,8 +51,19 @@ export default function SettingsScreen() {
     );
   }
 
+  function copyFingerprint() {
+    if (!myFingerprint) return;
+    Clipboard.setString(myFingerprint);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert('Copied', 'Your fingerprint has been copied to the clipboard. Share it with others so they can start an encrypted conversation with you.');
+  }
+
   const shortAddress = account
     ? `${account.address.slice(0, 10)}…${account.address.slice(-8)}`
+    : '—';
+
+  const shortFingerprint = myFingerprint
+    ? `${myFingerprint.slice(0, 8)}…${myFingerprint.slice(-8)}`
     : '—';
 
   return (
@@ -56,6 +77,13 @@ export default function SettingsScreen() {
           <Row label="Network" value={account ? `Base (${account.chainId})` : '—'} />
           <Row label="Account type" value="ERC-4337 · Kernel v3" />
           <Row label="Deployed" value={account?.isDeployed ? 'Yes' : 'Counterfactual'} />
+          <NavRow
+            label="Messaging fingerprint"
+            detail={shortFingerprint}
+            mono
+            onPress={copyFingerprint}
+            hint="Tap to copy — share with contacts to start conversations"
+          />
         </Section>
 
         {/* Security */}
@@ -68,7 +96,6 @@ export default function SettingsScreen() {
             label="Session keys"
             onPress={() => router.push('/(tabs)/settings/sessionKeys')}
           />
-          <NavRow label="Safety number" onPress={() => Alert.alert('Safety number', shortAddress)} />
         </Section>
 
         {/* Privacy */}
@@ -112,11 +139,30 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   );
 }
 
-function NavRow({ label, onPress }: { label: string; onPress: () => void }) {
+function NavRow({
+  label,
+  detail,
+  mono,
+  hint,
+  onPress,
+}: {
+  label: string;
+  detail?: string;
+  mono?: boolean;
+  hint?: string;
+  onPress: () => void;
+}) {
   return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.chevron}>›</Text>
+    <Pressable style={[styles.row, hint ? styles.rowTall : null]} onPress={onPress}>
+      <View style={styles.navRowBody}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
+      </View>
+      {detail ? (
+        <Text style={[styles.rowValue, mono && styles.mono]} numberOfLines={1}>{detail}</Text>
+      ) : (
+        <Text style={styles.chevron}>›</Text>
+      )}
     </Pressable>
   );
 }
@@ -154,11 +200,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
   },
-  rowLabel: { fontSize: typography.size.base, color: colors.text.primary, flex: 1 },
+  rowTall: {
+    paddingVertical: spacing.md,
+  },
+  navRowBody: { flex: 1, gap: 2 },
+  rowLabel: { fontSize: typography.size.base, color: colors.text.primary },
+  rowHint: { fontSize: typography.size.xs, color: colors.text.tertiary, marginTop: 2 },
   rowValue: {
     fontSize: typography.size.sm,
     color: colors.text.secondary,
-    maxWidth: '50%',
+    maxWidth: '45%',
     textAlign: 'right',
   },
   mono: { fontFamily: 'Courier', fontSize: typography.size.xs },

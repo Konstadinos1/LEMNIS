@@ -2,11 +2,13 @@ import React from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import { useChatStore } from '@/store/chat';
+import { useWalletStore } from '@/store/wallet';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
 import type { Thread } from '@/types/message';
 
 export default function ChatsScreen() {
   const threads = useChatStore((s) => Object.values(s.threads));
+  const myFingerprint = useWalletStore((s) => s.myFingerprint);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -26,7 +28,7 @@ export default function ChatsScreen() {
           return tb - ta;
         })}
         keyExtractor={(t) => t.id}
-        renderItem={({ item }) => <ThreadRow thread={item} />}
+        renderItem={({ item }) => <ThreadRow thread={item} myFingerprint={myFingerprint} />}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -41,8 +43,23 @@ export default function ChatsScreen() {
   );
 }
 
-function ThreadRow({ thread }: { thread: Thread }) {
-  const initials = thread.id.slice(0, 2).toUpperCase();
+function ThreadRow({
+  thread,
+  myFingerprint,
+}: {
+  thread: Thread;
+  myFingerprint: string | null;
+}) {
+  const peerFingerprints = thread.participantFingerprints?.filter(
+    (f) => f !== myFingerprint
+  ) ?? [];
+  const displayName =
+    peerFingerprints.length > 0
+      ? peerFingerprints.map((f) => `${f.slice(0, 6)}…${f.slice(-4)}`).join(', ')
+      : thread.participants.map((p) => `${p.slice(0, 6)}…${p.slice(-4)}`).join(', ');
+
+  const initials = (peerFingerprints[0] ?? thread.id).slice(0, 2).toUpperCase();
+
   const preview =
     thread.lastMessage?.type === 'text'
       ? thread.lastMessage.plaintext
@@ -60,7 +77,7 @@ function ThreadRow({ thread }: { thread: Thread }) {
       </View>
       <View style={styles.rowBody}>
         <Text style={styles.participantText} numberOfLines={1}>
-          {thread.participants.map((p) => `${p.slice(0, 6)}…${p.slice(-4)}`).join(', ')}
+          {displayName}
         </Text>
         {preview ? (
           <Text style={styles.preview} numberOfLines={1}>{preview}</Text>

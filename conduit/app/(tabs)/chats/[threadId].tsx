@@ -30,6 +30,7 @@ export default function ThreadScreen() {
   const thread = useChatStore((s) => s.threads[threadId]);
   const markRead = useChatStore((s) => s.markRead);
   const myId = useWalletStore((s) => s.account?.address ?? '');
+  const myFingerprint = useWalletStore((s) => s.myFingerprint);
   const openSwapSheet = useSwapStore((s) => s.openSwapSheet);
 
   useThreadMessages(threadId, wsRef);
@@ -48,10 +49,18 @@ export default function ThreadScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
-  const participantLabel = thread?.participants
-    .filter((p) => p !== myId)
-    .map((p) => `${p.slice(0, 6)}…${p.slice(-4)}`)
-    .join(', ') ?? threadId.slice(0, 8) + '…';
+  // Prefer fingerprints over wallet addresses — fingerprints are stable and don't
+  // link messaging identity to on-chain activity.
+  const peerFingerprints = thread?.participantFingerprints?.filter(
+    (f) => f !== myFingerprint
+  ) ?? [];
+  const participantLabel =
+    peerFingerprints.length > 0
+      ? peerFingerprints.map((f) => `${f.slice(0, 6)}…${f.slice(-4)}`).join(', ')
+      : thread?.participants
+          .filter((p) => p !== myId)
+          .map((p) => `${p.slice(0, 6)}…${p.slice(-4)}`)
+          .join(', ') ?? threadId.slice(0, 8) + '…';
 
   return (
     <GestureHandlerRootView style={styles.root}>

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { createSmartAccount } from '@/lib/wallet/smartAccount';
-import { generateAndStoreIdentity } from '@/lib/crypto/identity';
+import { generateAndStoreIdentity, getMyFingerprint } from '@/lib/crypto/identity';
 import { acquireApiSession } from '@/lib/api/auth';
 import { apiPost } from '@/lib/api/client';
 import { useWalletStore } from '@/store/wallet';
@@ -17,6 +17,7 @@ export default function CreateWalletScreen() {
   const [step, setStep] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const setAccount = useWalletStore((s) => s.setAccount);
+  const setMyFingerprint = useWalletStore((s) => s.setMyFingerprint);
 
   async function handleCreate() {
     setState('creating');
@@ -34,6 +35,10 @@ export default function CreateWalletScreen() {
       // Step 3: Authenticate with the API to get a session JWT
       setStep('Authenticating with relay…');
       await acquireApiSession();
+
+      // Persist fingerprint in store so all screens can read it synchronously
+      const fp = await getMyFingerprint();
+      setMyFingerprint(fp);
 
       // Step 4: Upload prekey bundle — required for others to initiate sessions
       setStep('Registering encrypted identity…');
