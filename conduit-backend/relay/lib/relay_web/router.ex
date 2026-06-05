@@ -10,6 +10,7 @@ defmodule RelayWeb.Router do
     pipe_through :internal
 
     post "/prekeys/register", InternalPrekeysController, :register
+    post "/prekeys/replenish", InternalPrekeysController, :replenish
     get "/prekeys/:fingerprint", InternalPrekeysController, :fetch_bundle
   end
 

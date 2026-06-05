@@ -64,6 +64,7 @@ defmodule Relay.Prekeys do
 
   @doc """
   Fetch the pre-key bundle for a peer, consuming one one-time prekey atomically.
+  Includes `otk_remaining` so the client knows when to replenish its OTK pool.
   Returns `{:ok, bundle}` or `{:error, :not_found}`.
   """
   def fetch_bundle(fingerprint) do
@@ -74,6 +75,10 @@ defmodule Relay.Prekeys do
       identity ->
         bundle = Repo.get_by!(PrekeyBundle, identity_id: identity.id)
         otk = consume_one_time_prekey(identity.id)
+        remaining = Repo.aggregate(
+          from(k in OneTimePrekey, where: k.identity_id == ^identity.id),
+          :count
+        )
 
         {:ok, %{
           registration_id: identity.registration_id,
@@ -87,7 +92,37 @@ defmodule Relay.Prekeys do
           kyber_prekey_signature: bundle.kyber_prekey_sig,
           one_time_prekey_id: otk && otk.key_id,
           one_time_prekey: otk && otk.public_key,
+          otk_remaining: remaining,
         }}
+    end
+  end
+
+  @doc """
+  Add replenished one-time prekeys for an existing identity.
+  The identity is looked up by fingerprint derived from `identity_key_dh`.
+  Returns `{:ok, count_added}` or `{:error, :not_found}`.
+  """
+  def replenish(fingerprint, one_time_prekeys) do
+    case Repo.get_by(Identity, fingerprint: fingerprint) do
+      nil ->
+        {:error, :not_found}
+
+      identity ->
+        inserted =
+          Enum.count(one_time_prekeys, fn otk ->
+            result =
+              %OneTimePrekey{}
+              |> OneTimePrekey.changeset(%{
+                identity_id: identity.id,
+                key_id: otk.key_id,
+                public_key: otk.public_key,
+              })
+              |> Repo.insert(on_conflict: :nothing)
+
+            match?({:ok, _}, result)
+          end)
+
+        {:ok, inserted}
     end
   end
 

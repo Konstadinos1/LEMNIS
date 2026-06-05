@@ -32,6 +32,39 @@ defmodule RelayWeb.InternalPrekeysController do
   end
 
   @doc """
+  POST /internal/prekeys/replenish
+  Upload additional one-time prekeys for an existing identity.
+  Caller must include their fingerprint so we can locate the identity.
+  """
+  def replenish(conn, params) do
+    fingerprint = params["fingerprint"]
+
+    unless is_binary(fingerprint) and Regex.match?(~r/^[0-9a-f]{64}$/, fingerprint) do
+      conn
+      |> put_status(:bad_request)
+      |> json(%{error: "invalid_fingerprint"})
+    else
+      case parse_one_time_prekeys(params["oneTimePreKeys"]) do
+        {:error, :invalid_params, reason} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{error: "invalid_params", detail: reason})
+
+        {:ok, otks} ->
+          case Prekeys.replenish(fingerprint, otks) do
+            {:ok, count} ->
+              json(conn, %{ok: true, added: count})
+
+            {:error, :not_found} ->
+              conn
+              |> put_status(:not_found)
+              |> json(%{error: "identity_not_found"})
+          end
+      end
+    end
+  end
+
+  @doc """
   GET /internal/prekeys/:fingerprint
   Returns pre-key bundle with binary fields serialised as number arrays,
   matching what the mobile client expects.
@@ -135,17 +168,18 @@ defmodule RelayWeb.InternalPrekeysController do
 
   defp serialise_bundle(b) do
     %{
-      registrationId:      b.registration_id,
-      identityKeyDh:       to_number_array(b.identity_key_dh),
-      identityKeyEd:       to_number_array(b.identity_key_ed),
-      signedPreKeyId:      b.signed_prekey_id,
-      signedPreKey:        to_number_array(b.signed_prekey),
+      registrationId:        b.registration_id,
+      identityKeyDh:         to_number_array(b.identity_key_dh),
+      identityKeyEd:         to_number_array(b.identity_key_ed),
+      signedPreKeyId:        b.signed_prekey_id,
+      signedPreKey:          to_number_array(b.signed_prekey),
       signedPreKeySignature: to_number_array(b.signed_prekey_signature),
-      kyberPreKeyId:       b.kyber_prekey_id,
-      kyberPreKey:         to_number_array(b.kyber_prekey),
-      kyberPreKeySignature: to_number_array(b.kyber_prekey_signature),
-      oneTimePreKeyId:     b.one_time_prekey_id,
-      oneTimePreKey:       if(b.one_time_prekey, do: to_number_array(b.one_time_prekey), else: nil),
+      kyberPreKeyId:         b.kyber_prekey_id,
+      kyberPreKey:           to_number_array(b.kyber_prekey),
+      kyberPreKeySignature:  to_number_array(b.kyber_prekey_signature),
+      oneTimePreKeyId:       b.one_time_prekey_id,
+      oneTimePreKey:         if(b.one_time_prekey, do: to_number_array(b.one_time_prekey), else: nil),
+      otkRemaining:          b.otk_remaining,
     }
   end
 
