@@ -13,7 +13,13 @@
 
 import { ed25519SignAsync, toHex } from '../crypto/primitives';
 import { loadIdentity, getMyFingerprint } from '../crypto/identity';
-import { apiFetch, saveSessionJwt, getSessionJwt } from './client';
+import {
+  apiFetch,
+  saveSessionJwt,
+  getSessionJwt,
+  jwtIsExpiredOrExpiringSoon,
+  registerSessionRefresher,
+} from './client';
 
 export async function acquireApiSession(): Promise<string> {
   const identity = await loadIdentity();
@@ -42,12 +48,19 @@ export async function acquireApiSession(): Promise<string> {
   });
 
   await saveSessionJwt(token);
+  // Register 401 auto-refresh so apiFetch can recover transparently.
+  // Done here rather than at module-load to guarantee the identity exists first.
+  registerSessionRefresher(acquireApiSession);
   return token;
 }
 
-/** Return a valid API session JWT, acquiring one if none is stored. */
+/**
+ * Return a valid (non-expired) API session JWT.
+ * Re-acquires when the stored token is missing, already expired, or expires
+ * within the next 60 seconds to avoid a request failing mid-flight.
+ */
 export async function ensureApiSession(): Promise<string> {
   const existing = await getSessionJwt();
-  if (existing) return existing;
+  if (existing && !jwtIsExpiredOrExpiringSoon(existing)) return existing;
   return acquireApiSession();
 }

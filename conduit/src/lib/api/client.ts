@@ -85,6 +85,38 @@ export async function clearSessionJwt(): Promise<void> {
   await SecureStore.deleteItemAsync(SESSION_JWT_KEY);
 }
 
+/** Decode `exp` from a JWT payload without verifying the signature. */
+export function jwtExpiry(jwt: string): number | null {
+  try {
+    const segment = jwt.split('.')[1];
+    if (!segment) return null;
+    const padded = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof decoded.exp === 'number' ? decoded.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns true when the JWT is already expired or will expire within
+ * `bufferSeconds` (default 60) — giving callers time to re-acquire before
+ * the next request actually hits the server.
+ */
+export function jwtIsExpiredOrExpiringSoon(jwt: string, bufferSeconds = 60): boolean {
+  const exp = jwtExpiry(jwt);
+  if (exp === null) return true;
+  return Date.now() / 1000 > exp - bufferSeconds;
+}
+
+// Callback registered by auth.ts after a successful session acquire.
+// Breaks the circular-dependency: client.ts cannot import auth.ts.
+let _refreshSession: (() => Promise<string>) | null = null;
+
+export function registerSessionRefresher(fn: () => Promise<string>): void {
+  _refreshSession = fn;
+}
+
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
 export interface ApiError {
@@ -96,6 +128,7 @@ export interface ApiError {
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
+  _isRetry = false,
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
   assertPinConfigured(hostnameFor(url));
@@ -109,6 +142,11 @@ export async function apiFetch<T>(
   };
 
   const res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401 && !_isRetry && _refreshSession) {
+    await _refreshSession();
+    return apiFetch<T>(path, options, true);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText })) as ApiError;

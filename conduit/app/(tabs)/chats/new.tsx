@@ -20,42 +20,46 @@ import { MMKV } from 'react-native-mmkv';
 import { serializeState } from '@/lib/crypto/doubleRatchet';
 import { Button } from '@/components/ui/Button';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
+import { ensureApiSession } from '@/lib/api/auth';
 
 const storage = new MMKV();
 const API = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.conduit.app';
 
-type Step = 'enter_address' | 'establishing' | 'done';
+type Step = 'enter_fingerprint' | 'establishing' | 'done';
 
 export default function NewThreadScreen() {
-  const [address, setAddress] = useState('');
-  const [step, setStep] = useState<Step>('enter_address');
+  const [fingerprint, setFingerprint] = useState('');
+  const [step, setStep] = useState<Step>('enter_fingerprint');
   const upsertThread = useChatStore((s) => s.upsertThread);
   const myAddress = useWalletStore((s) => s.account?.address ?? '');
 
   async function handleStartConversation() {
-    const peer = address.trim().toLowerCase();
+    const peer = fingerprint.trim().toLowerCase();
     if (!peer) return;
 
-    // Validate: 0x + 40 hex chars
-    if (!/^0x[0-9a-f]{40}$/i.test(peer)) {
-      Alert.alert('Invalid address', 'Enter a valid 0x Ethereum address.');
+    // Fingerprint = lowercase hex(SHA-256(X25519 DH key)) — 64 hex chars
+    if (!/^[0-9a-f]{64}$/.test(peer)) {
+      Alert.alert('Invalid fingerprint', 'Enter the recipient\'s 64-character hex fingerprint.');
       return;
     }
 
-    if (peer === myAddress.toLowerCase()) {
+    const myFingerprint = await getMyFingerprint();
+    if (peer === myFingerprint) {
       Alert.alert('Invalid', 'You cannot message yourself.');
       return;
     }
 
     setStep('establishing');
     try {
-      // Fetch Bob's pre-key bundle from relay
+      // Authenticated fetch — the prekeys endpoint requires a valid API session
+      const jwt = await ensureApiSession();
       const res = await fetch(
-        `${API}/api/prekeys/${peer.replace('0x', '')}`,
-        { headers: { Accept: 'application/json' } }
+        `${API}/api/prekeys/${peer}`,
+        { headers: { Accept: 'application/json', Authorization: `Bearer ${jwt}` } }
       );
 
-      if (!res.ok) throw new Error('Peer not found or not registered on Conduit.');
+      if (res.status === 404) throw new Error('Recipient not found — ask them to share their Conduit fingerprint.');
+      if (!res.ok) throw new Error('Could not reach the server. Please try again.');
       const bundle = await res.json() as PreKeyBundle;
 
       // Load our identity
@@ -63,7 +67,7 @@ export default function NewThreadScreen() {
       if (!myIdentity) throw new Error('Local identity not found. Please restart the app.');
 
       // Compute thread ID first — used as MMKV key prefix
-      const threadId = [myAddress.toLowerCase(), peer].sort().join('-');
+      const threadId = [myFingerprint ?? myAddress.toLowerCase(), peer].sort().join('-');
 
       // X3DH session establishment
       const { sharedSecret, initMessage } = await x3dhInitiate(myIdentity, bundle);
@@ -82,9 +86,12 @@ export default function NewThreadScreen() {
         oneTimePreKeyId: initMessage.oneTimePreKeyId ?? null,
       }));
 
-      // Derive peer's relay fingerprint from their Ed25519 identity key
+      // bundle.identityKeyDh lets us re-derive the peer fingerprint and verify it matches
       const peerFingerprint = await fingerprintFromDhKeyAsync(bundle.identityKeyDh as unknown as number[]);
-      const myFingerprint = await getMyFingerprint();
+      if (peerFingerprint !== peer) {
+        throw new Error('Bundle fingerprint mismatch — possible relay tampering. Aborting.');
+      }
+
       upsertThread({
         id: threadId,
         participants: [myAddress, peer],
@@ -94,6 +101,7 @@ export default function NewThreadScreen() {
         ],
         unreadCount: 0,
       });
+
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep('done');
@@ -126,20 +134,21 @@ export default function NewThreadScreen() {
           </View>
         ) : (
           <>
-            <Text style={styles.label}>Recipient address</Text>
+            <Text style={styles.label}>Recipient fingerprint</Text>
             <TextInput
               style={styles.input}
-              placeholder="0x…"
+              placeholder="64-character hex fingerprint"
               placeholderTextColor={colors.text.tertiary}
-              value={address}
-              onChangeText={setAddress}
+              value={fingerprint}
+              onChangeText={setFingerprint}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
             />
             <Text style={styles.hint}>
-              Enter the wallet address of a Conduit user. An end-to-end encrypted session
-              will be established using the Signal X3DH protocol.
+              Enter the recipient&apos;s Conduit fingerprint — they can share it from their
+              profile screen. An end-to-end encrypted session will be established using
+              the Signal X3DH protocol.
             </Text>
 
             <Button
@@ -147,7 +156,7 @@ export default function NewThreadScreen() {
               variant="primary"
               size="lg"
               fullWidth
-              disabled={!address.trim()}
+              disabled={fingerprint.trim().length !== 64}
               onPress={handleStartConversation}
             />
           </>
