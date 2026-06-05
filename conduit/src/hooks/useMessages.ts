@@ -3,7 +3,7 @@ import { useChatStore } from '@/store/chat';
 import { ratchetDecrypt, ratchetInitBob, deserializeState, serializeState } from '@/lib/crypto/doubleRatchet';
 import { senderKeyDecrypt, deserializeSenderKey, serializeSenderKey } from '@/lib/crypto/senderKey';
 import { x3dhRespond, type X3DHInitMessage } from '@/lib/crypto/x3dh';
-import { loadIdentity } from '@/lib/crypto/identity';
+import { loadIdentity, loadOtkByKeyId } from '@/lib/crypto/identity';
 import { createRelayJwt } from '@/lib/api/relayAuth';
 import { MMKV } from 'react-native-mmkv';
 import type { Message } from '@/types/message';
@@ -122,7 +122,7 @@ export function useThreadMessages(
                   oneTimePreKeyId: msg.init.oneTimePreKeyId ?? undefined,
                 };
 
-                const sharedSecret = await x3dhRespond(myIdentity, initMsg);
+                const sharedSecret = await x3dhRespond(myIdentity, initMsg, loadOtkByKeyId);
                 const bobRatchet = ratchetInitBob(sharedSecret, myIdentity.signedPreKey.keyPair);
                 stateRaw = serializeState(bobRatchet);
                 storage.set(`ratchet:${peerId}`, stateRaw);

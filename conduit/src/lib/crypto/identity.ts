@@ -25,6 +25,9 @@ import {
 } from './primitives';
 import { generateSignedPreKey, type IdentityKeyBundle } from './x3dh';
 
+// Re-export for convenience so callers don't need to import from primitives
+export type { X25519KeyPair };
+
 const KEYS = {
   IDENTITY_DH: 'conduit.identity.dh',
   IDENTITY_ED: 'conduit.identity.ed',
@@ -149,6 +152,51 @@ export async function fingerprintFromDhKeyAsync(dhPublicKey: Uint8Array | number
     : new Uint8Array(dhPublicKey as number[]);
   const hash = await sha256Async(bytes);
   return toHex(hash);
+}
+
+/**
+ * Load a single OTK private key by its key ID.
+ * Initial OTKs (keyId 0-9) live at `conduit.identity.otk.<index>`.
+ * Replenished OTKs (keyId = timestamp-based) live at the same prefix.
+ * Returns undefined if the key doesn't exist or has been consumed.
+ */
+export async function loadOtkByKeyId(keyId: number): Promise<X25519KeyPair | undefined> {
+  try {
+    const raw = await SecureStore.getItemAsync(`${KEYS.OTK_PREFIX}${keyId}`, SE_OPTIONS);
+    if (!raw) return undefined;
+    const { pub, sec } = JSON.parse(raw) as { pub: string; sec: string };
+    return { publicKey: fromBase64(pub), secretKey: fromBase64(sec) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Generate `count` fresh X25519 OTKs, persist private halves in SecureStore,
+ * and return the public halves with their key IDs for upload to the relay.
+ *
+ * Key IDs use the current timestamp as a base so they never collide with the
+ * initial 0-9 set uploaded during onboarding.
+ */
+export async function replenishOtks(
+  count = 10
+): Promise<Array<{ keyId: number; publicKey: Uint8Array }>> {
+  // Timestamp-based start ID avoids colliding with the initial 0-9 key IDs
+  const startId = Date.now();
+  const newOtks = await Promise.all(Array.from({ length: count }, () => x25519KeyPairAsync()));
+
+  for (let i = 0; i < newOtks.length; i++) {
+    await SecureStore.setItemAsync(
+      `${KEYS.OTK_PREFIX}${startId + i}`,
+      JSON.stringify({
+        pub: toBase64(newOtks[i].publicKey),
+        sec: toBase64(newOtks[i].secretKey),
+      }),
+      SE_OPTIONS,
+    );
+  }
+
+  return newOtks.map((k, i) => ({ keyId: startId + i, publicKey: k.publicKey }));
 }
 
 /** Safety number — 60-digit decimal string from the two identity keys. */

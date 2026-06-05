@@ -43,14 +43,16 @@ export interface SignedPreKeyPair {
 }
 
 export interface PreKeyBundle {
-  registrationId:       number;
-  identityKeyDh:        Uint8Array;
-  identityKeyEd:        Uint8Array;
-  signedPreKeyId:       number;
-  signedPreKey:         Uint8Array;
+  registrationId:        number;
+  identityKeyDh:         Uint8Array;
+  identityKeyEd:         Uint8Array;
+  signedPreKeyId:        number;
+  signedPreKey:          Uint8Array;
   signedPreKeySignature: Uint8Array;
-  oneTimePreKeyId?:     number;
-  oneTimePreKey?:       Uint8Array;
+  oneTimePreKeyId?:      number;
+  oneTimePreKey?:        Uint8Array;
+  /** Remaining OTK count on the relay — client should replenish when < 5. */
+  otkRemaining?:         number;
 }
 
 export interface X3DHInitMessage {
@@ -169,9 +171,14 @@ export async function x3dhInitiate(
 
 // ─── Bob side (responder) ─────────────────────────────────────────────────────
 
+/**
+ * @param lookupOtk  Optional external lookup for replenished OTKs (keyId > 9).
+ *                   Falls back to array index for the initial 0-9 set.
+ */
 export async function x3dhRespond(
   bobIdentity: IdentityKeyBundle,
   initMessage: X3DHInitMessage,
+  lookupOtk?: (keyId: number) => Promise<X25519KeyPair | undefined>,
 ): Promise<Uint8Array> {
   const usedSPK = bobIdentity.signedPreKey;
   if (usedSPK.keyId !== initMessage.signedPreKeyId) {
@@ -188,8 +195,12 @@ export async function x3dhRespond(
   let ikm = concat(F_BYTES, dh1, dh2, dh3);
 
   if (initMessage.oneTimePreKeyId !== undefined) {
-    const otk = bobIdentity.oneTimePreKeys[initMessage.oneTimePreKeyId];
-    if (!otk) throw new Error('One-time prekey not found');
+    // Array-index lookup works for initial keyIds 0-9; external lookup covers replenished keys
+    let otk: X25519KeyPair | undefined = bobIdentity.oneTimePreKeys[initMessage.oneTimePreKeyId];
+    if (!otk && lookupOtk) {
+      otk = await lookupOtk(initMessage.oneTimePreKeyId);
+    }
+    if (!otk) throw new Error(`One-time prekey ${initMessage.oneTimePreKeyId} not found`);
     const dh4 = await x25519DhAsync(otk.secretKey, initMessage.ephemeralKey);
     ikm = concat(ikm, dh4);
   }

@@ -5,11 +5,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Alert, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
-import { hasIdentity } from '@/lib/crypto/identity';
+import { hasIdentity, getMyFingerprint } from '@/lib/crypto/identity';
 import { loadSmartAccount } from '@/lib/wallet/smartAccount';
 import { useWalletStore } from '@/store/wallet';
+import { ensureApiSession } from '@/lib/api/auth';
 import { getSecurityReport } from 'conduit-security';
-import { setupPushNotifications } from '@/hooks/usePushNotifications';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,6 +22,7 @@ const queryClient = new QueryClient({
 function AppNavigator() {
   const [ready, setReady] = useState(false);
   const setAccount = useWalletStore((s) => s.setAccount);
+  const setMyFingerprint = useWalletStore((s) => s.setMyFingerprint);
 
   useEffect(() => {
     async function bootstrap() {
@@ -38,19 +39,20 @@ function AppNavigator() {
           return;
         }
 
-        const [hasId, account] = await Promise.all([
+        const [hasId, account, fingerprint] = await Promise.all([
           hasIdentity(),
           loadSmartAccount(),
+          getMyFingerprint(),
         ]);
 
         if (account) setAccount(account);
+        setMyFingerprint(fingerprint);
 
-        // Route based on whether the user has set up their wallet + identity
         if (!hasId || !account) {
           router.replace('/(auth)/onboarding');
         } else {
-          // Register push token after authentication (non-blocking)
-          void setupPushNotifications();
+          // Warm up API session in background — re-acquired on first 401 if stale
+          void ensureApiSession().catch(() => {});
           router.replace('/(tabs)/chats');
         }
       } catch {
@@ -62,7 +64,7 @@ function AppNavigator() {
     }
 
     bootstrap();
-  }, [setAccount]);
+  }, [setAccount, setMyFingerprint]);
 
   if (!ready) return null;
 

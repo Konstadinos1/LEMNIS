@@ -21,6 +21,8 @@ import { serializeState } from '@/lib/crypto/doubleRatchet';
 import { Button } from '@/components/ui/Button';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
 import { ensureApiSession } from '@/lib/api/auth';
+import { apiPost } from '@/lib/api/client';
+import { replenishOtks } from '@/lib/crypto/identity';
 
 const storage = new MMKV();
 const API = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.conduit.app';
@@ -85,6 +87,19 @@ export default function NewThreadScreen() {
         signedPreKeyId:  initMessage.signedPreKeyId,
         oneTimePreKeyId: initMessage.oneTimePreKeyId ?? null,
       }));
+
+      // Replenish OTKs in the background when the relay reports fewer than 5 remaining.
+      // Fire-and-forget — a failed replenishment is non-fatal.
+      if ((bundle.otkRemaining ?? 10) < 5) {
+        void replenishOtks(10).then((otks) =>
+          apiPost('/api/prekeys/replenish', {
+            oneTimePreKeys: otks.map((k) => ({
+              keyId: k.keyId,
+              publicKey: Array.from(k.publicKey),
+            })),
+          })
+        ).catch(() => {});
+      }
 
       // bundle.identityKeyDh lets us re-derive the peer fingerprint and verify it matches
       const peerFingerprint = await fingerprintFromDhKeyAsync(bundle.identityKeyDh as unknown as number[]);
