@@ -62,7 +62,20 @@ export default function NewThreadScreen() {
 
       if (res.status === 404) throw new Error('Recipient not found — ask them to share their Conduit fingerprint.');
       if (!res.ok) throw new Error('Could not reach the server. Please try again.');
-      const bundle = await res.json() as PreKeyBundle;
+      const raw = await res.json() as Record<string, unknown>;
+
+      // Server returns binary fields as number[] (JSON-serialised bytes); coerce to Uint8Array
+      const bundle: PreKeyBundle = {
+        registrationId:        raw.registrationId as number,
+        identityKeyDh:         new Uint8Array(raw.identityKeyDh as number[]),
+        identityKeyEd:         new Uint8Array(raw.identityKeyEd as number[]),
+        signedPreKeyId:        raw.signedPreKeyId as number,
+        signedPreKey:          new Uint8Array(raw.signedPreKey as number[]),
+        signedPreKeySignature: new Uint8Array(raw.signedPreKeySignature as number[]),
+        oneTimePreKeyId:       raw.oneTimePreKeyId as number | undefined,
+        oneTimePreKey:         raw.oneTimePreKey ? new Uint8Array(raw.oneTimePreKey as number[]) : undefined,
+        otkRemaining:          raw.otkRemaining as number | undefined,
+      };
 
       // Load our identity
       const myIdentity = await loadIdentity();
@@ -75,8 +88,7 @@ export default function NewThreadScreen() {
       const { sharedSecret, initMessage } = await x3dhInitiate(myIdentity, bundle);
 
       // Initialise Double Ratchet (Alice side)
-      const spkPub = new Uint8Array(bundle.signedPreKey as unknown as number[]);
-      const ratchetState = await ratchetInitAlice(sharedSecret, spkPub);
+      const ratchetState = await ratchetInitAlice(sharedSecret, bundle.signedPreKey);
       storage.set(`ratchet:${threadId}`, serializeState(ratchetState));
 
       // Store X3DH init message — delivered inside the first message envelope
@@ -102,7 +114,7 @@ export default function NewThreadScreen() {
       }
 
       // bundle.identityKeyDh lets us re-derive the peer fingerprint and verify it matches
-      const peerFingerprint = await fingerprintFromDhKeyAsync(bundle.identityKeyDh as unknown as number[]);
+      const peerFingerprint = await fingerprintFromDhKeyAsync(bundle.identityKeyDh);
       if (peerFingerprint !== peer) {
         throw new Error('Bundle fingerprint mismatch — possible relay tampering. Aborting.');
       }
@@ -124,7 +136,7 @@ export default function NewThreadScreen() {
       router.replace(`/(tabs)/chats/${threadId}`);
     } catch (e) {
       Alert.alert('Error', (e as Error).message);
-      setStep('enter_address');
+      setStep('enter_fingerprint');
     }
   }
 

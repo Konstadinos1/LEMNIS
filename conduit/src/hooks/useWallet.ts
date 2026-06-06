@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useWalletStore } from '@/store/wallet';
-import { loadSmartAccount } from '@/crypto/wallet';
+import { loadSmartAccount } from '@/lib/wallet/smartAccount';
 import type { TokenBalance } from '@/types/wallet';
 
 async function fetchBalances(address: string): Promise<TokenBalance[]> {
