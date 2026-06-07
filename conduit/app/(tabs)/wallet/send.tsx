@@ -7,32 +7,17 @@ import {
   SafeAreaView,
   Pressable,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useWalletStore } from '@/store/wallet';
 import { signUserOp, buildUnsignedUserOp } from '@/lib/wallet/smartAccount';
+import { apiPost } from '@/lib/api/client';
 import { Button } from '@/components/ui/Button';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
-import { encodeFunctionData, parseUnits, type Address } from 'viem';
+import { parseUnits, type Address } from 'viem';
 
 type State = 'idle' | 'sending' | 'done' | 'error';
-
-// ERC-20 transfer ABI fragment
-const ERC20_TRANSFER_ABI = [
-  {
-    name: 'transfer',
-    type: 'function',
-    inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-] as const;
-
-const API = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.conduit.app';
 
 export default function SendScreen() {
   const account = useWalletStore((s) => s.account);
@@ -54,48 +39,33 @@ export default function SendScreen() {
 
     setState('sending');
     try {
-      const callData = encodeFunctionData({
-        abi: ERC20_TRANSFER_ABI,
-        functionName: 'transfer',
-        args: [toAddress as Address, parseUnits(amount, selectedToken.decimals)],
-      });
-
+      const rawAmount = parseUnits(amount, selectedToken.decimals).toString();
       const nonce = BigInt(Date.now());
+
+      // Build a minimal unsigned UserOp — backend will fill callData + gas sponsorship
       const unsignedOp = buildUnsignedUserOp({
-        sender: account.address,
-        callData: callData as `0x${string}`,
+        sender:   account.address,
+        callData: '0x' as `0x${string}`,
         nonce,
       });
 
-      // Sponsor + get userOpHash
-      const sponsorRes = await fetch(`${API}/api/wallet/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userOp: unsignedOp,
-          tokenAddress: selectedToken.address,
-          to: toAddress,
-          amount: parseUnits(amount, selectedToken.decimals).toString(),
-          accountAddress: account.address,
-        }),
+      const { userOpHash, sponsoredOp } = await apiPost<{
+        userOpHash: `0x${string}`;
+        sponsoredOp: Record<string, string>;
+      }>('/api/wallet/send', {
+        userOp:         unsignedOp,
+        tokenAddress:   selectedToken.address,
+        to:             toAddress,
+        amount:         rawAmount,
+        accountAddress: account.address,
       });
 
-      if (!sponsorRes.ok) throw new Error(await sponsorRes.text());
-      const { userOpHash, sponsoredOp } = await sponsorRes.json() as {
-        userOpHash: `0x${string}`;
-        sponsoredOp: Record<string, unknown>;
-      };
-
-      if (!account.passkeyCredentialId) throw new Error('No passkey');
+      if (!account.passkeyCredentialId) throw new Error('No passkey credential');
       const signature = await signUserOp(account.passkeyCredentialId, userOpHash);
 
-      const submitRes = await fetch(`${API}/api/wallet/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userOp: { ...sponsoredOp, signature } }),
+      const { txHash: hash } = await apiPost<{ txHash: string }>('/api/wallet/submit', {
+        userOp: { ...sponsoredOp, signature },
       });
-      if (!submitRes.ok) throw new Error(await submitRes.text());
-      const { txHash: hash } = await submitRes.json() as { txHash: string };
 
       setTxHash(hash);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
