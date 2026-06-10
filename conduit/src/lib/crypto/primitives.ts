@@ -9,6 +9,7 @@
 
 import { Buffer } from 'buffer';
 import nacl from 'tweetnacl';
+import { ml_kem768 } from '@noble/post-quantum/ml-kem';
 
 // react-native-quick-crypto exposes the Node crypto API via JSI
 const qc = (() => {
@@ -303,6 +304,31 @@ export function sha256(data: Uint8Array): Uint8Array {
   const hash = qc.createHash('sha256');
   hash.update(data as Buffer);
   return new Uint8Array(hash.digest() as Buffer);
+}
+
+// ─── ML-KEM-768 (FIPS 203 / Kyber) ──────────────────────────────────────────
+
+export interface MlKemKeyPair {
+  publicKey: Uint8Array;  // 1184 bytes
+  secretKey: Uint8Array;  // 2400 bytes
+}
+
+export function mlKemKeyPair(): MlKemKeyPair {
+  return ml_kem768.keygen();
+}
+
+export async function mlKemEncapsulateAsync(
+  publicKey: Uint8Array,
+): Promise<{ ciphertext: Uint8Array; sharedSecret: Uint8Array }> {
+  const { cipherText, sharedSecret } = ml_kem768.encapsulate(publicKey);
+  return { ciphertext: cipherText, sharedSecret };
+}
+
+export async function mlKemDecapsulateAsync(
+  ciphertext: Uint8Array,
+  secretKey: Uint8Array,
+): Promise<Uint8Array> {
+  return ml_kem768.decapsulate(ciphertext, secretKey);
 }
 
 // ─── Constant-time equality ──────────────────────────────────────────────────

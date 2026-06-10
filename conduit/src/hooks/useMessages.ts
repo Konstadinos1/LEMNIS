@@ -119,6 +119,8 @@ export function useThreadMessages(
                   identityKeyDh:   new Uint8Array(msg.init.identityKeyDh),
                   ephemeralKey:    new Uint8Array(msg.init.ephemeralKey),
                   signedPreKeyId:  msg.init.signedPreKeyId,
+                  kyberCiphertext: new Uint8Array(msg.init.kyberCiphertext),
+                  kyberPreKeyId:   msg.init.kyberPreKeyId,
                   oneTimePreKeyId: msg.init.oneTimePreKeyId ?? undefined,
                 };
 

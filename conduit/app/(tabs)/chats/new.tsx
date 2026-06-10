@@ -72,6 +72,9 @@ export default function NewThreadScreen() {
         signedPreKeyId:        raw.signedPreKeyId as number,
         signedPreKey:          new Uint8Array(raw.signedPreKey as number[]),
         signedPreKeySignature: new Uint8Array(raw.signedPreKeySignature as number[]),
+        kyberPreKeyId:         raw.kyberPreKeyId as number,
+        kyberPreKey:           new Uint8Array(raw.kyberPreKey as number[]),
+        kyberPreKeySig:        new Uint8Array(raw.kyberPreKeySig as number[]),
         oneTimePreKeyId:       raw.oneTimePreKeyId as number | undefined,
         oneTimePreKey:         raw.oneTimePreKey ? new Uint8Array(raw.oneTimePreKey as number[]) : undefined,
         otkRemaining:          raw.otkRemaining as number | undefined,
@@ -97,6 +100,8 @@ export default function NewThreadScreen() {
         identityKeyDh:   Array.from(initMessage.identityKeyDh),
         ephemeralKey:    Array.from(initMessage.ephemeralKey),
         signedPreKeyId:  initMessage.signedPreKeyId,
+        kyberCiphertext: Array.from(initMessage.kyberCiphertext),
+        kyberPreKeyId:   initMessage.kyberPreKeyId,
         oneTimePreKeyId: initMessage.oneTimePreKeyId ?? null,
       }));
 

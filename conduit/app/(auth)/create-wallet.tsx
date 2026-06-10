@@ -52,7 +52,11 @@ export default function CreateWalletScreen() {
           publicKey: Array.from(identity.signedPreKey.keyPair.publicKey),
           signature: Array.from(identity.signedPreKey.signature),
         },
-        kyberPreKey: { keyId: 0, publicKey: [], signature: [] }, // PQXDH: TODO
+        kyberPreKey: {
+          keyId: identity.kyberPreKey.keyId,
+          publicKey: Array.from(identity.kyberPreKey.keyPair.publicKey),
+          signature: Array.from(identity.kyberPreKey.signature),
+        },
         oneTimePreKeys: identity.oneTimePreKeys.slice(0, 10).map((k, i) => ({
           keyId: i,
           publicKey: Array.from(k.publicKey),

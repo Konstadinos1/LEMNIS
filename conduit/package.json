@@ -44,6 +44,7 @@
     "react-native-quick-crypto": "^0.7.0",
     "react-native-get-random-values": "^1.11.0",
     "tweetnacl": "^1.0.3",
+    "@noble/post-quantum": "^0.2.1",
 
     "viem": "^2.21.0",
     "wagmi": "^2.13.0",

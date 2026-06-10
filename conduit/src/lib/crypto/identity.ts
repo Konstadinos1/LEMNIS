@@ -16,6 +16,7 @@ import * as SecureStore from 'expo-secure-store';
 import {
   x25519KeyPairAsync,
   ed25519KeyPairAsync,
+  mlKemKeyPair,
   sha256Async,
   toBase64,
   toHex,
@@ -23,7 +24,7 @@ import {
   type X25519KeyPair,
   type Ed25519KeyPair,
 } from './primitives';
-import { generateSignedPreKey, type IdentityKeyBundle } from './x3dh';
+import { generateSignedPreKey, generateKyberPreKey, type IdentityKeyBundle, type KyberPreKeyPair } from './x3dh';
 
 // Re-export for convenience so callers don't need to import from primitives
 export type { X25519KeyPair };
@@ -32,6 +33,7 @@ const KEYS = {
   IDENTITY_DH: 'conduit.identity.dh',
   IDENTITY_ED: 'conduit.identity.ed',
   SPK: 'conduit.identity.spk',
+  KYBER_PRE_KEY: 'conduit.identity.kpk',
   OTK_PREFIX: 'conduit.identity.otk.',
   REGISTRATION_ID: 'conduit.identity.regId',
 };
@@ -42,13 +44,16 @@ const SE_OPTIONS: SecureStore.SecureStoreOptions = {
 };
 
 export async function generateAndStoreIdentity(): Promise<IdentityKeyBundle> {
-  const [identityKeyDh, identityKeyEd, ...oneTimePreKeys] = await Promise.all([
-    x25519KeyPairAsync(),
-    ed25519KeyPairAsync(),
-    ...Array.from({ length: 10 }, () => x25519KeyPairAsync()),
-  ]);
+  const identityKeyDh = await x25519KeyPairAsync();
+  const identityKeyEd = await ed25519KeyPairAsync();
+  const oneTimePreKeys = await Promise.all(
+    Array.from({ length: 10 }, () => x25519KeyPairAsync()),
+  );
   const registrationId = (Math.random() * 0x3fff | 0) + 1;
-  const signedPreKey = await generateSignedPreKey(identityKeyEd, 1);
+  const [signedPreKey, kyberPreKey] = await Promise.all([
+    generateSignedPreKey(identityKeyEd, 1),
+    generateKyberPreKey(identityKeyEd, 1),
+  ]);
 
   await SecureStore.setItemAsync(KEYS.IDENTITY_DH, JSON.stringify({
     pub: toBase64(identityKeyDh.publicKey),
@@ -67,6 +72,13 @@ export async function generateAndStoreIdentity(): Promise<IdentityKeyBundle> {
     sig: toBase64(signedPreKey.signature),
   }), SE_OPTIONS);
 
+  await SecureStore.setItemAsync(KEYS.KYBER_PRE_KEY, JSON.stringify({
+    keyId: kyberPreKey.keyId,
+    pub: toBase64(kyberPreKey.keyPair.publicKey),
+    sec: toBase64(kyberPreKey.keyPair.secretKey),
+    sig: toBase64(kyberPreKey.signature),
+  }), SE_OPTIONS);
+
   for (let i = 0; i < oneTimePreKeys.length; i++) {
     await SecureStore.setItemAsync(`${KEYS.OTK_PREFIX}${i}`, JSON.stringify({
       pub: toBase64(oneTimePreKeys[i].publicKey),
@@ -76,21 +88,25 @@ export async function generateAndStoreIdentity(): Promise<IdentityKeyBundle> {
 
   await SecureStore.setItemAsync(KEYS.REGISTRATION_ID, String(registrationId));
 
-  return { identityKeyDh, identityKeyEd, signedPreKey, oneTimePreKeys, registrationId };
+  return { identityKeyDh, identityKeyEd, signedPreKey, kyberPreKey, oneTimePreKeys, registrationId };
 }
 
 export async function loadIdentity(): Promise<IdentityKeyBundle | null> {
   try {
-    const dhRaw = await SecureStore.getItemAsync(KEYS.IDENTITY_DH, SE_OPTIONS);
-    const edRaw = await SecureStore.getItemAsync(KEYS.IDENTITY_ED, SE_OPTIONS);
-    const spkRaw = await SecureStore.getItemAsync(KEYS.SPK, SE_OPTIONS);
-    const regIdRaw = await SecureStore.getItemAsync(KEYS.REGISTRATION_ID);
+    const [dhRaw, edRaw, spkRaw, kpkRaw, regIdRaw] = await Promise.all([
+      SecureStore.getItemAsync(KEYS.IDENTITY_DH, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.IDENTITY_ED, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.SPK, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.KYBER_PRE_KEY, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.REGISTRATION_ID),
+    ]);
 
-    if (!dhRaw || !edRaw || !spkRaw || !regIdRaw) return null;
+    if (!dhRaw || !edRaw || !spkRaw || !kpkRaw || !regIdRaw) return null;
 
-    const dh = JSON.parse(dhRaw);
-    const ed = JSON.parse(edRaw);
+    const dh  = JSON.parse(dhRaw);
+    const ed  = JSON.parse(edRaw);
     const spk = JSON.parse(spkRaw);
+    const kpk = JSON.parse(kpkRaw);
 
     const identityKeyDh: X25519KeyPair = {
       publicKey: fromBase64(dh.pub),
@@ -99,6 +115,12 @@ export async function loadIdentity(): Promise<IdentityKeyBundle | null> {
     const identityKeyEd: Ed25519KeyPair = {
       publicKey: fromBase64(ed.pub),
       secretKey: fromBase64(ed.sec),
+    };
+
+    const kyberPreKey: KyberPreKeyPair = {
+      keyId: kpk.keyId,
+      keyPair: { publicKey: fromBase64(kpk.pub), secretKey: fromBase64(kpk.sec) },
+      signature: fromBase64(kpk.sig),
     };
 
     const oneTimePreKeys: X25519KeyPair[] = [];
@@ -117,6 +139,7 @@ export async function loadIdentity(): Promise<IdentityKeyBundle | null> {
         keyPair: { publicKey: fromBase64(spk.pub), secretKey: fromBase64(spk.sec) },
         signature: fromBase64(spk.sig),
       },
+      kyberPreKey,
       oneTimePreKeys,
       registrationId: Number(regIdRaw),
     };

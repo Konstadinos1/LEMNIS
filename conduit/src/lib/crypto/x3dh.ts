@@ -18,12 +18,15 @@ import {
   ed25519SignAsync,
   ed25519VerifyAsync,
   hkdfAsync,
-  secureRandomAsync,
+  mlKemKeyPair,
+  mlKemEncapsulateAsync,
+  mlKemDecapsulateAsync,
   concat,
   toBase64,
   fromBase64,
   type X25519KeyPair,
   type Ed25519KeyPair,
+  type MlKemKeyPair,
 } from './primitives';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +35,7 @@ export interface IdentityKeyBundle {
   identityKeyEd:  Ed25519KeyPair;
   identityKeyDh:  X25519KeyPair;
   signedPreKey:   SignedPreKeyPair;
+  kyberPreKey:    KyberPreKeyPair;
   oneTimePreKeys: X25519KeyPair[];
   registrationId: number;
 }
@@ -42,6 +46,12 @@ export interface SignedPreKeyPair {
   signature: Uint8Array;   // Ed25519(identityKeyEd.secretKey, signedPreKey.publicKey)
 }
 
+export interface KyberPreKeyPair {
+  keyId:     number;
+  keyPair:   MlKemKeyPair;
+  signature: Uint8Array;   // Ed25519(identityKeyEd.secretKey, kyberPreKey.publicKey)
+}
+
 export interface PreKeyBundle {
   registrationId:        number;
   identityKeyDh:         Uint8Array;
@@ -49,6 +59,9 @@ export interface PreKeyBundle {
   signedPreKeyId:        number;
   signedPreKey:          Uint8Array;
   signedPreKeySignature: Uint8Array;
+  kyberPreKeyId:         number;
+  kyberPreKey:           Uint8Array;  // 1184-byte ML-KEM-768 public key
+  kyberPreKeySig:        Uint8Array;
   oneTimePreKeyId?:      number;
   oneTimePreKey?:        Uint8Array;
   /** Remaining OTK count on the relay — client should replenish when < 5. */
@@ -56,9 +69,11 @@ export interface PreKeyBundle {
 }
 
 export interface X3DHInitMessage {
-  identityKeyDh:   Uint8Array;
-  ephemeralKey:    Uint8Array;
-  signedPreKeyId:  number;
+  identityKeyDh:    Uint8Array;
+  ephemeralKey:     Uint8Array;
+  signedPreKeyId:   number;
+  kyberCiphertext:  Uint8Array;  // 1088-byte ML-KEM-768 ciphertext
+  kyberPreKeyId:    number;
   oneTimePreKeyId?: number;
 }
 
@@ -75,26 +90,21 @@ const F_BYTES   = new Uint8Array(32).fill(0xff);  // 32 × 0xFF padding prepende
 // ─── Key generation ───────────────────────────────────────────────────────────
 
 export async function generateIdentityBundle(registrationId?: number): Promise<IdentityKeyBundle> {
-  const [identityKeyEd, identityKeyDh, ...otks] = await Promise.all([
-    // Ed25519 keypair
-    (async () => {
-      const { secretKey, publicKey } = await x25519KeyPairAsync(); // placeholder — ed25519 below
-      return { secretKey, publicKey }; // overwritten in generateSignedPreKey
-    })(),
-    x25519KeyPairAsync(),
-    ...Array.from({ length: 10 }, () => x25519KeyPairAsync()),
-  ]);
-
-  // Real Ed25519 keypair for signing
   const { ed25519KeyPairAsync: ed25519KP } = await import('./primitives');
   const realEdKP = await ed25519KP();
 
-  const spk = await generateSignedPreKey(realEdKP, 1);
+  const [identityKeyDh, spk, kyberPreKey, ...otks] = await Promise.all([
+    x25519KeyPairAsync(),
+    generateSignedPreKey(realEdKP, 1),
+    generateKyberPreKey(realEdKP, 1),
+    ...Array.from({ length: 10 }, () => x25519KeyPairAsync()),
+  ]);
 
   return {
-    identityKeyEd: realEdKP,
+    identityKeyEd:  realEdKP,
     identityKeyDh,
     signedPreKey:   spk,
+    kyberPreKey,
     oneTimePreKeys: otks,
     registrationId: registrationId ?? ((Math.random() * 0x3fff | 0) + 1),
   };
@@ -109,6 +119,15 @@ export async function generateSignedPreKey(
   return { keyId, keyPair, signature };
 }
 
+export async function generateKyberPreKey(
+  identityKeyEd: Ed25519KeyPair,
+  keyId: number,
+): Promise<KyberPreKeyPair> {
+  const keyPair   = mlKemKeyPair();
+  const signature = await ed25519SignAsync(keyPair.publicKey, identityKeyEd.secretKey);
+  return { keyId, keyPair, signature };
+}
+
 export function publicPreKeyBundle(bundle: IdentityKeyBundle): PreKeyBundle {
   const otk = bundle.oneTimePreKeys[0];
   return {
@@ -118,6 +137,9 @@ export function publicPreKeyBundle(bundle: IdentityKeyBundle): PreKeyBundle {
     signedPreKeyId:        bundle.signedPreKey.keyId,
     signedPreKey:          bundle.signedPreKey.keyPair.publicKey,
     signedPreKeySignature: bundle.signedPreKey.signature,
+    kyberPreKeyId:         bundle.kyberPreKey.keyId,
+    kyberPreKey:           bundle.kyberPreKey.keyPair.publicKey,
+    kyberPreKeySig:        bundle.kyberPreKey.signature,
     oneTimePreKeyId:       otk ? 0 : undefined,
     oneTimePreKey:         otk?.publicKey,
   };
@@ -156,14 +178,21 @@ export async function x3dhInitiate(
     oneTimePreKeyId = bobBundle.oneTimePreKeyId;
   }
 
+  // PQXDH: ML-KEM-768 encapsulation against Bob's Kyber pre-key
+  const { ciphertext: kyberCiphertext, sharedSecret: kyberSS } =
+    await mlKemEncapsulateAsync(bobBundle.kyberPreKey);
+  ikm = concat(ikm, kyberSS);
+
   const sharedSecret = await hkdfAsync(ikm, 32, new Uint8Array(32), INFO_X3DH);
 
   return {
     sharedSecret,
     initMessage: {
-      identityKeyDh:  aliceIdentity.identityKeyDh.publicKey,
-      ephemeralKey:   EK.publicKey,
-      signedPreKeyId: bobBundle.signedPreKeyId,
+      identityKeyDh:   aliceIdentity.identityKeyDh.publicKey,
+      ephemeralKey:    EK.publicKey,
+      signedPreKeyId:  bobBundle.signedPreKeyId,
+      kyberCiphertext,
+      kyberPreKeyId:   bobBundle.kyberPreKeyId,
       oneTimePreKeyId,
     },
   };
@@ -204,6 +233,13 @@ export async function x3dhRespond(
     const dh4 = await x25519DhAsync(otk.secretKey, initMessage.ephemeralKey);
     ikm = concat(ikm, dh4);
   }
+
+  // PQXDH: ML-KEM-768 decapsulation using our Kyber pre-key secret
+  const kyberSS = await mlKemDecapsulateAsync(
+    initMessage.kyberCiphertext,
+    bobIdentity.kyberPreKey.keyPair.secretKey,
+  );
+  ikm = concat(ikm, kyberSS);
 
   return hkdfAsync(ikm, 32, new Uint8Array(32), INFO_X3DH);
 }
