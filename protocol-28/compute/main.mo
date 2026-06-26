@@ -4,6 +4,8 @@
 import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Array "mo:base/Array";
+import Text "mo:base/Text";
+import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
