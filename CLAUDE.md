@@ -6,25 +6,31 @@ build and run it, the conventions to follow, and the known gotchas that will tri
 
 ---
 
-## 1. What this project is
+## 0. 30-second orientation
 
-**LEMNIS** is a decentralized cloud platform — an AWS/GCP/Azure-style alternative built on the
-**Internet Computer (ICP)** and Akash. It exposes cloud primitives (compute, storage, database,
-identity, billing) as on-chain canisters, with a CLI/SDK for developers.
+- **LEMNIS** = a decentralized cloud platform (AWS-alike) on the Internet Computer (ICP).
+- Backend = **5 Motoko canisters** in `protocol-28/` (identity, compute, storage, database, billing).
+  They're near-identical templates — learn one, you know all five.
+- Frontend tooling = **Lemniskit**, a TypeScript CLI in `lemniskit/cli/`.
+- **Maturity: prototype.** Canisters hold real in-memory logic but aren't production-hardened; the
+  CLI only prints **mock output** (no canister calls wired up yet). The whitepaper in
+  `docs/ARCHITECTURE.md` is the *target vision*, not a description of what's built.
+- **Don't trust the docs/README for "what exists."** Read the code. Several things described
+  (SDK, web console, real CLI↔canister calls) are not implemented.
+- The canister code does **not currently compile** as-is — see §3.3 for the three blockers.
 
-The project is organized as a **three-tier brand structure**:
+---
 
-| Tier | Name | What lives here | Tech |
-|------|------|-----------------|------|
-| Brand (user-facing) | **LEMNIS** | The platform / product | — |
-| Backend (core) | **Protocol 28** | Canisters (the actual services) | Motoko |
-| Tooling (DX) | **Lemniskit** | CLI + SDKs | TypeScript |
+## 1. The three-tier brand structure
 
-> **Maturity:** This is an **early-stage / prototype** codebase. The canisters implement working
-> in-memory logic but are not production-hardened, and the CLI currently prints **mock output**
-> rather than calling the canisters. Treat the docs (especially `docs/ARCHITECTURE.md`) as the
-> *target vision*, and the code as a first scaffold toward it. Do not assume a feature exists in
-> code just because the README or whitepaper describes it.
+| Tier | Name | What lives here | Tech | Path |
+|------|------|-----------------|------|------|
+| Brand (user-facing) | **LEMNIS** | The platform / product | — | — |
+| Backend (core) | **Protocol 28** | Canisters (the actual services) | Motoko | `protocol-28/` |
+| Tooling (DX) | **Lemniskit** | CLI + SDKs | TypeScript | `lemniskit/` |
+
+When you see "Protocol 28" in code comments or docs, it means the canister backend. "Lemniskit"
+means the developer tooling.
 
 ---
 
@@ -41,13 +47,13 @@ LEMNIS/
 │
 ├── lemniskit/              # Developer tooling
 │   └── cli/                # `lemniskit` command-line tool (TypeScript + commander)
-│       ├── src/cli.ts      # All CLI command definitions
+│       ├── src/cli.ts      # All CLI command definitions (single file)
 │       └── package.json    # @lemnis/lemniskit
 │
-├── console/                # Web dashboard (referenced in dfx.json as an assets canister;
-│                           #   source `console/dist` — NOT yet present in the repo)
+├── console/                # Web dashboard — referenced in dfx.json (source console/dist)
+│                           #   but NOT present in the repo yet
 │
-├── docs/                   # Long-form documentation
+├── docs/                   # Long-form documentation (vision, not current state)
 │   ├── ARCHITECTURE.md     # Full whitepaper (15 sections) — the source of truth for vision
 │   ├── GOVERNANCE.md       # DAO governance model
 │   ├── PRICING.md          # Plans + cost model
@@ -55,76 +61,135 @@ LEMNIS/
 │   └── SECURITY.md         # Security posture / threat model
 │
 ├── dfx.json                # ICP project config: canister → source mapping, networks
-├── README.md               # Public overview
+├── README.md               # Public overview (aspirational; cross-check against code)
 ├── CLAUDE.md / AGENTS.md   # Agent instructions (this file)
 └── LICENSE                 # Apache 2.0
 ```
 
-When the README's "Project Structure" mentions `lemniskit/sdk/` or `console/`, note those
-directories do not exist in the tree yet — only `lemniskit/cli/` is implemented.
+**Tree drift to be aware of:** the README's "Project Structure" lists `lemniskit/sdk/` and
+`console/` — neither exists. Only `lemniskit/cli/` is implemented. `dfx.json` declares a `console`
+assets canister sourced from `console/dist`, which also doesn't exist, so `dfx deploy` of that
+canister will fail until the console is built.
 
 ---
 
 ## 3. The canisters (Protocol 28)
 
-All five canisters are Motoko `actor`s and follow the **same idioms**. Learn one and you know all
-of them.
+All five are Motoko `actor`s built from the **same template**. Internalize the template once.
 
-**Shared patterns:**
-- State is held in `HashMap.HashMap<K, V>` instance fields (in-memory).
+### 3.1 The shared canister template
+
+```motoko
+import Principal "mo:base/Principal";
+import HashMap "mo:base/HashMap";
+import Time "mo:base/Time";
+import Result "mo:base/Result";
+// + Text / Nat / Array / Blob / Cycles as the service needs them
+
+actor Thing {
+    // 1. Public types: the record + a Result alias for fallible ops
+    public type Thing = { id: Text; owner: Principal; createdAt: Time.Time; /* ... */ };
+
+    // 2. State: in-memory HashMaps as instance vars (see gotcha #3 — NOT stable)
+    private var things = HashMap.HashMap<Text, Thing>(10, Text.equal, Text.hash);
+    private var counter : Nat = 0;
+
+    // 3. Mutations: shared(msg) so you get msg.caller; return Result, never trap
+    public shared(msg) func createThing() : async Result.Result<Thing, Text> {
+        let id = "thing-" # Nat.toText(counter);   // monotonic-counter IDs
+        counter += 1;
+        let t : Thing = { id; owner = msg.caller; createdAt = Time.now() };
+        things.put(id, t);
+        #ok(t)
+    };
+
+    // 4. Ownership check on every mutation that touches an existing record
+    public shared(msg) func mutate(id: Text) : async Result.Result<(), Text> {
+        switch (things.get(id)) {
+            case null { #err("Thing not found") };
+            case (?t) {
+                if (not Principal.equal(t.owner, msg.caller)) { return #err("Not authorized") };
+                // ...update with `{ t with field = newValue }`, then put...
+                #ok(())
+            };
+        };
+    };
+
+    // 5. Reads that don't need the caller are `query` (cheap, non-consensus)
+    public query func getThing(id: Text) : async ?Thing { things.get(id) };
+}
+```
+
+**Non-negotiable idioms (every canister follows these):**
 - Caller identity comes from `public shared(msg) func ...` → `msg.caller : Principal`.
-- Reads that don't need the caller are `public query func ...` (cheap, non-consensus).
-- Mutations return `Result.Result<T, Text>` (`#ok` / `#err "message"`) — **errors are values,
-  not traps**. Follow this; never let a public method trap on expected error paths.
-- Ownership is enforced by comparing `Principal.equal(record.owner, msg.caller)` and returning
-  `#err("Not authorized")` on mismatch.
-- IDs are generated from a monotonic counter, e.g. `"compute-" # Nat.toText(counter)`.
+- Fallible mutations return `Result.Result<T, Text>` (`#ok` / `#err "message"`). **Errors are
+  values, not traps** — never let a public method trap on an expected error path.
+- Ownership is enforced by `Principal.equal(record.owner, msg.caller)`; mismatch → `#err("Not authorized")`.
+- Read-only access uses `public query func ...`.
+- IDs come from a monotonic `Nat` counter: `"<prefix>-" # Nat.toText(counter)`.
+- Record updates use functional update syntax: `{ existing with field = newValue }`.
 
-**Per-canister responsibilities:**
+### 3.2 Per-canister API reference
 
-| Canister | Key types | Key methods |
-|----------|-----------|-------------|
-| `identity` | `User { id, createdAt, email, projects }` | `register`, `getUser`, `isAuthenticated`, `getUserCount` |
-| `compute` | `ComputeInstance`, `InstanceStatus {#running/#stopped/#terminated}` | `createInstance`, `getInstance`, `listInstances`, `stopInstance`, `getAvailableCycles` |
-| `storage` | `Bucket`, `StorageObject` (objects keyed `bucketId # "/" # key`) | `createBucket`, `uploadObject`, `getObject`, `listObjects`, `deleteObject`, `getStats` |
-| `database` | `Table`, `Record { id, data: [(Text,Text)] }` | `createTable`, `insert`, `get`, `query`, `update`, `delete`, `list`, `getStats` |
-| `billing` | `Account { balance, totalDeposited, totalSpent }`, `UsageRecord` | `getOrCreateAccount`, `deposit`, `getBalance`, `charge`, `getAccount`, `getCyclePrice`, `getPlatformStats` |
+| Canister | Key types | Methods (✎ = mutation, 🔍 = query) |
+|----------|-----------|-------------------------------------|
+| **identity** | `User { id, createdAt, email: ?Text, projects: [Text] }` | ✎`register()`, ✎`getUser()`, ✎`isAuthenticated()`, 🔍`getUserCount()` |
+| **compute** | `ComputeInstance { id, owner, status, createdAt, cyclesBalance, memory }`, `InstanceStatus {#running; #stopped; #terminated}` | ✎`createInstance(memory: Nat)`, 🔍`getInstance(id)`, ✎`listInstances()`, ✎`stopInstance(id)`, 🔍`getAvailableCycles()` |
+| **storage** | `Bucket { id, owner, objectCount, totalSize, createdAt }`, `StorageObject { key, data: Blob, contentType, size, owner, ... }` (objects keyed `bucketId # "/" # key`) | ✎`createBucket(name)`, ✎`uploadObject(bucketId, key, data, contentType)`, 🔍`getObject(bucketId, key)`, 🔍`listObjects(bucketId)`, ✎`deleteObject(bucketId, key)`, 🔍`getStats()` |
+| **database** | `Table { name, owner, recordCount, createdAt }`, `Record { id, data: [(Text,Text)], createdAt, updatedAt }` | ✎`createTable(name)`, ✎`insert(tableName, data)`, 🔍`get(recordId)`, 🔍`query(...)` ⚠️, ✎`update(recordId, data)`, ✎`delete(recordId)`, 🔍`list(tableName)`, 🔍`getStats()` |
+| **billing** | `Account { owner, balance, totalDeposited, totalSpent, createdAt }`, `UsageRecord { service, amount, timestamp }` | ✎`getOrCreateAccount()`, ✎`deposit()` (accepts attached cycles), 🔍`getBalance(user)`, ✎`charge(user, amount, service)`, ✎`getAccount()`, 🔍`getCyclePrice()`, 🔍`getPlatformStats()` |
 
-### Known gotchas in the current canister code (fix these when you touch a file)
+Note: some methods are `shared` (not `query`) even though they're read-shaped — e.g. `getUser`,
+`listInstances`, `getAccount` — because they depend on `msg.caller`. That's intentional; a `query`
+can't be authenticated by caller in the same way.
 
-These will surface as soon as you run `dfx build`:
+### 3.3 Build-blocking gotchas (the canisters don't compile until these are fixed)
 
-1. **Missing imports.** Several files use modules they don't import:
-   - `compute/main.mo` uses `Text.equal`, `Text.hash`, `Nat.toText` but imports neither `Text`
-     nor `Nat`.
-   - `database/main.mo` uses `Nat.toText` without importing `Nat`.
-   Add the corresponding `import Text "mo:base/Text";` / `import Nat "mo:base/Nat";`.
-2. **`query` as a method name.** `database/main.mo` defines `public query func query(...)`.
-   `query` is a Motoko keyword; this won't compile. Rename it (e.g. `queryByField`) and update
-   the CLI/SDK accordingly.
-3. **Non-stable state.** All `HashMap` state is declared with plain `var` (not `stable`), and
-   there are no `preupgrade`/`postupgrade` hooks. **All data is wiped on canister upgrade.** For
-   anything beyond a demo, migrate to stable structures (e.g. stable vars or the `StableBTreeMap`
-   pattern) before relying on persistence.
+Verified against the current source:
 
-When you fix these, prefer a small focused commit per concern and keep the existing style
-(4-space indent, `// WHY` comments, explicit `Result` returns).
+1. **Missing imports.**
+   - `protocol-28/compute/main.mo` uses `Text.equal`/`Text.hash` (line 32) and `Nat.toText`
+     (line 37) but imports neither `Text` nor `Nat` (imports end at line 9).
+   - `protocol-28/database/main.mo` uses `Nat.toText` (line 75) without importing `Nat`.
+   Fix: add `import Text "mo:base/Text";` and/or `import Nat "mo:base/Nat";`.
+
+2. **`query` used as a method name.** `protocol-28/database/main.mo:95` declares
+   `public query func query(...)`. `query` is a Motoko keyword — won't parse. Rename it
+   (e.g. `queryByField`) and update any caller/SDK reference.
+
+3. **Non-stable state = data loss on upgrade.** Every `HashMap` is a plain `var` (not `stable`),
+   and there are no `preupgrade`/`postupgrade` hooks. **All canister data is wiped on every
+   upgrade.** Fine for a demo; for anything persistent, migrate to stable structures (stable vars
+   with serialize/deserialize hooks, or the `StableBTreeMap` pattern).
+
+Minor (warnings, not blockers): `database/main.mo` imports `Iter` (line 10) but doesn't use it.
+
+When fixing these, keep one concern per commit and match the existing style (4-space indent,
+`//` comments that explain *why*, explicit `Result` returns).
 
 ---
 
 ## 4. The CLI (Lemniskit)
 
-`lemniskit/cli/src/cli.ts` — a `commander`-based CLI with `chalk` for colored output.
+`lemniskit/cli/src/cli.ts` — one file, `commander`-based, `chalk` for colored output.
 
-Commands: `init [project-name]`, `deploy [-n local|ic]`, `storage <action> [bucket] [file]`,
-`compute <action> [id]`, `db <action> [table]`, `balance`, `status`.
+| Command | Args / flags | Currently does |
+|---------|--------------|----------------|
+| `init [project-name]` | — | Prints a fake scaffold + next-steps |
+| `deploy` | `-n, --network <local\|ic>` (default `local`) | Prints a fake "compiling canisters" list |
+| `storage <action>` | `[bucket] [file]` | Echoes the action |
+| `compute <action>` | `[instance-id]` | Echoes the action |
+| `db <action>` | `[table]` | Echoes the action |
+| `balance` | — | Prints a hardcoded balance |
+| `status` | — | Prints all canisters as "Running" |
 
-**Important:** every command currently just `console.log`s mock/placeholder output. There is **no
-`@dfinity/agent` wiring yet**, even though the deps are declared in `package.json`. When asked to
-"make a command work," the real task is to connect it to the corresponding canister via the
-DFINITY agent — don't assume it already does.
+**Critical:** every command is a `console.log` stub. There is **no `@dfinity/agent` wiring**, even
+though `@dfinity/agent`, `@dfinity/candid`, and `@dfinity/principal` are already dependencies. When
+a task says "make `<command>` work," the real job is to instantiate an agent + actor and call the
+matching canister method — not to tweak the existing print. Match the existing
+`.command().description().argument()/.option().action()` shape when adding commands.
 
-Dependencies of note: `@dfinity/agent`, `@dfinity/candid`, `@dfinity/principal` (canister calls),
+Dependencies of note: `@dfinity/agent`/`@dfinity/candid`/`@dfinity/principal` (canister calls),
 `commander` (CLI), `chalk`/`ora`/`inquirer` (UX).
 
 ---
@@ -138,11 +203,12 @@ Dependencies of note: `@dfinity/agent`, `@dfinity/candid`, `@dfinity/principal` 
 ### Canisters
 ```bash
 dfx start --background        # start local replica (port 8080)
-dfx deploy                    # build + deploy all canisters defined in dfx.json
-dfx deploy <canister>         # e.g. dfx deploy identity
+dfx deploy                    # build + deploy all canisters in dfx.json
+dfx deploy identity           # build/deploy a single canister
 dfx canister call identity register   # invoke a method
 ```
 `dfx.json` networks: `local` (ephemeral, 127.0.0.1:8080) and `ic` (mainnet, persistent).
+A bare `dfx build` is the fastest way to surface the §3.3 compile errors.
 
 ### CLI
 ```bash
@@ -150,71 +216,78 @@ cd lemniskit/cli
 npm install
 npm run dev -- --help         # run via ts-node (src/cli.ts)
 npm run build                 # tsc → dist/
-npm test                      # jest (no tests exist yet — add them with new logic)
+npm test                      # jest (no tests exist yet)
 ```
 
-> There is **no test suite yet** (no `*.test.ts`, no Motoko tests, no CI workflow). If you add
-> non-trivial logic, add tests in the same change: `jest` for the CLI/SDK, and prefer
-> `dfx canister call` based checks (or PocketIC / `mo:test`) for canisters.
+**No tests, no CI yet** — no `*.test.ts`, no Motoko tests, no workflow under `.github/`. If you add
+non-trivial logic, add tests in the same change: `jest` for the CLI/SDK, and `dfx canister call`
+checks (or PocketIC / `mo:test`) for canisters.
 
 ---
 
-## 6. Conventions
+## 6. Adding a new canister (keep these in sync)
 
-These apply to all work in this repo. The first group is project-specific; the rest are the
-codeowner's standing preferences and still apply here.
+A new service is not just a `.mo` file. Do all of:
+1. `protocol-28/<name>/main.mo` — follow the §3.1 template (state, `shared(msg)` mutations with
+   ownership checks, `query` reads, `Result` returns).
+2. Add a `canisters.<name>` entry to `dfx.json` (`"main": "protocol-28/<name>/main.mo"`,
+   `"type": "motoko"`).
+3. Add a CLI surface in `lemniskit/cli/src/cli.ts` (a `commander` command).
+4. Update the README "Project Structure" + the relevant `docs/` file if behavior is documented.
 
-**Project-specific**
-- **Motoko:** 4-space indent; explicit `Result` returns for fallible methods; enforce ownership
-  with `Principal.equal`; use `query` functions for read-only access; keep canisters single-
-  responsibility (don't merge two services into one actor).
-- **TypeScript:** strict mode, type everything, `commander` for new CLI commands (match the
-  existing `.command().description().action()` shape), `chalk` for user-facing output.
-- Keep `dfx.json`, the README structure section, and any new canister in sync — adding a canister
-  means: new `protocol-28/<name>/main.mo` + a `canisters` entry in `dfx.json` + a CLI surface.
+Keep canisters single-responsibility — don't merge two services into one actor.
+
+---
+
+## 7. Conventions
+
+**Motoko**
+- 4-space indent; explicit `Result` returns for fallible methods; ownership via `Principal.equal`;
+  `query` functions for caller-independent reads; one service per actor.
+
+**TypeScript**
+- Strict mode, type everything, `commander` for new commands (match the existing chain shape),
+  `chalk` for user-facing output.
 
 **General engineering**
-1. Ship working code, not prototypes-on-top-of-prototypes. No leftover `TODO` comments — if it's
-   not done, say so in the PR description.
-2. Name things explicitly. `getUserBalance()` not `getData()`.
-3. Functions do one thing; keep them short. Extract when they grow past ~40 lines.
+1. Ship working code, not prototypes-on-top-of-prototypes. No leftover `TODO`s — if it's not done,
+   say so in the PR description.
+2. Name things explicitly: `getUserBalance()` not `getData()`.
+3. Functions do one thing; extract when they grow past ~40 lines.
 4. Error handling is mandatory — never let errors bubble silently (in Motoko, return `#err`).
-5. No magic numbers — constants at the top of the file or in config. (`billing/main.mo`'s cycle
-   constants are a good example to follow.)
+5. No magic numbers — constants at the top of the file (see `billing/main.mo`'s cycle constants,
+   `getCyclePrice` at lines 119–125, for the pattern).
 6. Comments explain **why**, not what.
 
 **Security**
-- Never hardcode secrets, keys, or canister IDs that should be generated. `.gitignore` already
-  excludes `.env*`, `canister_ids.json`, and `.dfx/` — keep it that way.
+- Never hardcode secrets, keys, or generated canister IDs. `.gitignore` already excludes `.env*`,
+  `canister_ids.json`, and `.dfx/` — keep it that way.
 - Validate all external input. Enforce caller authorization on every state-mutating canister
-  method (the ownership checks above).
-- See `docs/SECURITY.md` for the intended threat model.
+  method (the §3.1 ownership check). See `docs/SECURITY.md` for the intended threat model.
 
 **Git workflow**
 - Branch naming: `feat/...`, `fix/...`, `chore/...`, `refactor/...`.
-- **Conventional commits**: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`. One logical change
-  per commit.
-- Never push directly to `main` — always via PR. Open PRs as drafts.
+- **Conventional commits**: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`. One logical change per
+  commit.
+- Never push directly to `main` — always via PR. Open PRs as **drafts**.
 
 ---
 
-## 7. Documentation map
+## 8. Documentation map
 
-For anything beyond code mechanics, the long-form docs are the reference:
+The long-form docs describe the *intended* system, not necessarily what's built:
 
-- `docs/ARCHITECTURE.md` — the full 15-section whitepaper; the canonical description of the
-  intended system (services, DAO governance, multi-chain strategy). Start here for "how is X
-  *supposed* to work."
+- `docs/ARCHITECTURE.md` — full 15-section whitepaper; canonical for "how is X *supposed* to work."
 - `docs/GOVERNANCE.md` — DAO committees (Technical / Treasury / Grants).
 - `docs/PRICING.md` — plan tiers and the cost model vs AWS.
 - `docs/ROADMAP.md` — quarterly milestones (Q1 MVP → Q4 GA).
 - `docs/SECURITY.md` — security posture.
 
-When you change behavior that these docs describe, update the relevant doc in the same PR.
+When you change behavior these docs describe, update the relevant doc in the same PR.
 
 ---
 
-## 8. When you're stuck
+## 9. When you're stuck
 
 1. Read the actual code — don't guess. The canister and CLI patterns are small and consistent.
 2. Check whether a feature is *implemented* vs *only described in docs* before building on it.
