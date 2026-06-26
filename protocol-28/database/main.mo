@@ -4,10 +4,10 @@
 import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Text "mo:base/Text";
+import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Result "mo:base/Result";
-import Iter "mo:base/Iter";
 
 actor Database {
     
@@ -91,8 +91,9 @@ actor Database {
         records.get(recordId)
     };
     
-    // Query records by field value
-    public query func query(
+    // Query records by field value.
+    // Named queryByField because `query` is a reserved Motoko keyword.
+    public query func queryByField(
         tableName: TableName,
         field: Text,
         value: Text
