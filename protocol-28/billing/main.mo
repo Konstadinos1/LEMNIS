@@ -6,7 +6,6 @@ import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
-import Nat64 "mo:base/Nat64";
 
 actor Billing {
     
