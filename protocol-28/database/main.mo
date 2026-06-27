@@ -30,9 +30,10 @@ actor Database {
     };
     
     // State
-    private var tables = HashMap.HashMap<TableName, Table>(10, Text.equal, Text.hash);
-    private var records = HashMap.HashMap<Text, Record>(100, Text.equal, Text.hash);
-    private var recordCounters = HashMap.HashMap<TableName, Nat>(10, Text.equal, Text.hash);
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var tables = HashMap.HashMap<TableName, Table>(10, Text.equal, Text.hash);
+    transient var records = HashMap.HashMap<Text, Record>(100, Text.equal, Text.hash);
+    transient var recordCounters = HashMap.HashMap<TableName, Nat>(10, Text.equal, Text.hash);
     
     // Create a table
     public shared(msg) func createTable(name: TableName) : async Result.Result<Table, Text> {

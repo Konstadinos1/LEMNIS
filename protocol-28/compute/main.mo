@@ -31,8 +31,9 @@ actor Compute {
     public type CreateResult = Result.Result<ComputeInstance, Text>;
     
     // State
-    private var instances = HashMap.HashMap<Text, ComputeInstance>(10, Text.equal, Text.hash);
-    private var instanceCounter : Nat = 0;
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var instances = HashMap.HashMap<Text, ComputeInstance>(10, Text.equal, Text.hash);
+    transient var instanceCounter : Nat = 0;
     
     // Create a new compute instance
     public shared(msg) func createInstance(memory: Nat) : async CreateResult {

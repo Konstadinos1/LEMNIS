@@ -25,7 +25,8 @@ actor Billing {
     };
     
     // State
-    private var accounts = HashMap.HashMap<Principal, Account>(10, Principal.equal, Principal.hash);
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var accounts = HashMap.HashMap<Principal, Account>(10, Principal.equal, Principal.hash);
     
     // Create or get account
     public shared(msg) func getOrCreateAccount() : async Account {
