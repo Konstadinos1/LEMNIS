@@ -6,7 +6,7 @@ import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Result "mo:base/Result";
 
-actor Identity {
+persistent actor Identity {
     
     // Types
     public type UserId = Principal;

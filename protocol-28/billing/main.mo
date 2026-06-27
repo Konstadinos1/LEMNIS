@@ -7,7 +7,7 @@ import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
 
-actor Billing {
+persistent actor Billing {
     
     // Types
     public type Account = {

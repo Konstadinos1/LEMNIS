@@ -9,7 +9,7 @@ import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Result "mo:base/Result";
 
-actor Database {
+persistent actor Database {
     
     // Types
     public type TableName = Text;

@@ -9,7 +9,7 @@ import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Result "mo:base/Result";
 
-actor Storage {
+persistent actor Storage {
     
     // Types
     public type BucketId = Text;

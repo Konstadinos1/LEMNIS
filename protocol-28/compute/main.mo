@@ -10,7 +10,7 @@ import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
 
-actor Compute {
+persistent actor Compute {
     
     // Types
     public type ComputeInstance = {
