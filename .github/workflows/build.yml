@@ -38,7 +38,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: lemniskit/cli/package-lock.json
 
-      - run: npm install
+      - run: npm ci
 
       - run: npm run build
