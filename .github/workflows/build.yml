@@ -20,11 +20,17 @@ jobs:
       - name: dfx --version
         run: dfx --version
 
-      # --check type-checks/builds without a running replica. We name the five
-      # Motoko canisters explicitly to skip the `console` assets canister, whose
-      # source (console/dist) is not built in this repo yet.
+      # --check type-checks/builds without a running replica. `dfx build` takes a
+      # single canister name, so we loop over the five Motoko canisters to skip
+      # the `console` assets canister, whose source (console/dist) is not built
+      # in this repo yet.
       - name: Build canisters
-        run: dfx build --check identity compute storage database billing
+        run: |
+          for canister in identity compute storage database billing; do
+            echo "::group::dfx build --check $canister"
+            dfx build --check "$canister"
+            echo "::endgroup::"
+          done
 
   cli:
     name: Build Lemniskit CLI
