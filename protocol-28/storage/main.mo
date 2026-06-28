@@ -9,7 +9,7 @@ import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Result "mo:base/Result";
 
-actor Storage {
+persistent actor Storage {
     
     // Types
     public type BucketId = Text;
@@ -36,8 +36,9 @@ actor Storage {
     public type UploadResult = Result.Result<StorageObject, Text>;
     
     // State
-    private var buckets = HashMap.HashMap<BucketId, Bucket>(10, Text.equal, Text.hash);
-    private var objects = HashMap.HashMap<Text, StorageObject>(100, Text.equal, Text.hash);
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var buckets = HashMap.HashMap<BucketId, Bucket>(10, Text.equal, Text.hash);
+    transient var objects = HashMap.HashMap<Text, StorageObject>(100, Text.equal, Text.hash);
     
     // Create a bucket
     public shared(msg) func createBucket(name: Text) : async Result.Result<Bucket, Text> {

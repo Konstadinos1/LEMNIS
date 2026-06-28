@@ -4,12 +4,12 @@
 import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Text "mo:base/Text";
+import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Result "mo:base/Result";
-import Iter "mo:base/Iter";
 
-actor Database {
+persistent actor Database {
     
     // Types
     public type TableName = Text;
@@ -30,9 +30,10 @@ actor Database {
     };
     
     // State
-    private var tables = HashMap.HashMap<TableName, Table>(10, Text.equal, Text.hash);
-    private var records = HashMap.HashMap<Text, Record>(100, Text.equal, Text.hash);
-    private var recordCounters = HashMap.HashMap<TableName, Nat>(10, Text.equal, Text.hash);
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var tables = HashMap.HashMap<TableName, Table>(10, Text.equal, Text.hash);
+    transient var records = HashMap.HashMap<Text, Record>(100, Text.equal, Text.hash);
+    transient var recordCounters = HashMap.HashMap<TableName, Nat>(10, Text.equal, Text.hash);
     
     // Create a table
     public shared(msg) func createTable(name: TableName) : async Result.Result<Table, Text> {
@@ -91,8 +92,9 @@ actor Database {
         records.get(recordId)
     };
     
-    // Query records by field value
-    public query func query(
+    // Query records by field value.
+    // Named queryByField because `query` is a reserved Motoko keyword.
+    public query func queryByField(
         tableName: TableName,
         field: Text,
         value: Text

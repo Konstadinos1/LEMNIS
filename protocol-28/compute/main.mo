@@ -4,11 +4,13 @@
 import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Array "mo:base/Array";
+import Text "mo:base/Text";
+import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
 
-actor Compute {
+persistent actor Compute {
     
     // Types
     public type ComputeInstance = {
@@ -29,8 +31,9 @@ actor Compute {
     public type CreateResult = Result.Result<ComputeInstance, Text>;
     
     // State
-    private var instances = HashMap.HashMap<Text, ComputeInstance>(10, Text.equal, Text.hash);
-    private var instanceCounter : Nat = 0;
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var instances = HashMap.HashMap<Text, ComputeInstance>(10, Text.equal, Text.hash);
+    transient var instanceCounter : Nat = 0;
     
     // Create a new compute instance
     public shared(msg) func createInstance(memory: Nat) : async CreateResult {

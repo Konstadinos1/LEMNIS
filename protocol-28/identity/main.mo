@@ -6,7 +6,7 @@ import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Result "mo:base/Result";
 
-actor Identity {
+persistent actor Identity {
     
     // Types
     public type UserId = Principal;
@@ -21,7 +21,9 @@ actor Identity {
     public type AuthResult = Result.Result<User, Text>;
     
     // State
-    private var users = HashMap.HashMap<UserId, User>(10, Principal.equal, Principal.hash);
+    // transient: HashMap is not a stable type, so this state is not persisted
+    // across canister upgrades (see CLAUDE.md — persistence is a separate task).
+    transient var users = HashMap.HashMap<UserId, User>(10, Principal.equal, Principal.hash);
     
     // Register a new user
     public shared(msg) func register() : async AuthResult {

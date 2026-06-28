@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  canisters:
+    name: Type-check Motoko canisters
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dfx
+        run: |
+          DFXVM_INIT_YES=true sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          echo "$HOME/.local/share/dfx/bin" >> "$GITHUB_PATH"
+
+      - name: dfx --version
+        run: dfx --version
+
+      # --check type-checks/builds without a running replica. `dfx build` takes a
+      # single canister name, so we loop over the five Motoko canisters to skip
+      # the `console` assets canister, whose source (console/dist) is not built
+      # in this repo yet.
+      - name: Build canisters
+        run: |
+          for canister in identity compute storage database billing; do
+            echo "::group::dfx build --check $canister"
+            dfx build --check "$canister"
+            echo "::endgroup::"
+          done
+
+  cli:
+    name: Build Lemniskit CLI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lemniskit/cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lemniskit/cli/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build

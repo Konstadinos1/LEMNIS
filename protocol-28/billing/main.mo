@@ -6,9 +6,8 @@ import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
-import Nat64 "mo:base/Nat64";
 
-actor Billing {
+persistent actor Billing {
     
     // Types
     public type Account = {
@@ -26,7 +25,8 @@ actor Billing {
     };
     
     // State
-    private var accounts = HashMap.HashMap<Principal, Account>(10, Principal.equal, Principal.hash);
+    // transient: not persisted across canister upgrades (see CLAUDE.md).
+    transient var accounts = HashMap.HashMap<Principal, Account>(10, Principal.equal, Principal.hash);
     
     // Create or get account
     public shared(msg) func getOrCreateAccount() : async Account {
