@@ -2,13 +2,13 @@
 // Cycles management and usage tracking
 
 import Principal "mo:base/Principal";
-import HashMap "mo:base/HashMap";
+import Map "mo:base/OrderedMap";
 import Time "mo:base/Time";
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
 
 persistent actor Billing {
-    
+
     // Types
     public type Account = {
         owner: Principal;
@@ -17,20 +17,23 @@ persistent actor Billing {
         totalSpent: Nat;
         createdAt: Time.Time;
     };
-    
+
     public type UsageRecord = {
         service: Text;
         amount: Nat;
         timestamp: Time.Time;
     };
-    
-    // State
-    // transient: not persisted across canister upgrades (see CLAUDE.md).
-    transient var accounts = HashMap.HashMap<Principal, Account>(10, Principal.equal, Principal.hash);
-    
+
+    // Map operations for Principal keys. transient: holds functions and is
+    // reconstructed deterministically on every upgrade.
+    transient let accountOps = Map.Make<Principal>(Principal.compare);
+
+    // State. Persisted across upgrades via enhanced orthogonal persistence.
+    var accounts : Map.Map<Principal, Account> = accountOps.empty();
+
     // Create or get account
     public shared(msg) func getOrCreateAccount() : async Account {
-        switch (accounts.get(msg.caller)) {
+        switch (accountOps.get(accounts, msg.caller)) {
             case (?account) { account };
             case null {
                 let newAccount : Account = {
@@ -40,21 +43,21 @@ persistent actor Billing {
                     totalSpent = 0;
                     createdAt = Time.now();
                 };
-                accounts.put(msg.caller, newAccount);
+                accounts := accountOps.put(accounts, msg.caller, newAccount);
                 newAccount
             };
         };
     };
-    
+
     // Deposit cycles
     public shared(msg) func deposit() : async Result.Result<Nat, Text> {
         let received = Cycles.accept(Cycles.available());
-        
+
         if (received == 0) {
             return #err("No cycles received");
         };
-        
-        switch (accounts.get(msg.caller)) {
+
+        switch (accountOps.get(accounts, msg.caller)) {
             case (?account) {
                 let updated : Account = {
                     owner = account.owner;
@@ -63,7 +66,7 @@ persistent actor Billing {
                     totalSpent = account.totalSpent;
                     createdAt = account.createdAt;
                 };
-                accounts.put(msg.caller, updated);
+                accounts := accountOps.put(accounts, msg.caller, updated);
                 #ok(received)
             };
             case null {
@@ -74,29 +77,29 @@ persistent actor Billing {
                     totalSpent = 0;
                     createdAt = Time.now();
                 };
-                accounts.put(msg.caller, newAccount);
+                accounts := accountOps.put(accounts, msg.caller, newAccount);
                 #ok(received)
             };
         };
     };
-    
+
     // Check balance
     public query func getBalance(user: Principal) : async Nat {
-        switch (accounts.get(user)) {
+        switch (accountOps.get(accounts, user)) {
             case (?account) { account.balance };
             case null { 0 };
         };
     };
-    
+
     // Charge for service usage (internal)
-    public shared(msg) func charge(user: Principal, amount: Nat, service: Text) : async Result.Result<(), Text> {
-        switch (accounts.get(user)) {
+    public shared(_msg) func charge(user: Principal, amount: Nat, _service: Text) : async Result.Result<(), Text> {
+        switch (accountOps.get(accounts, user)) {
             case null { #err("Account not found") };
             case (?account) {
                 if (account.balance < amount) {
                     return #err("Insufficient balance");
                 };
-                
+
                 let updated : Account = {
                     owner = account.owner;
                     balance = account.balance - amount;
@@ -104,17 +107,17 @@ persistent actor Billing {
                     totalSpent = account.totalSpent + amount;
                     createdAt = account.createdAt;
                 };
-                accounts.put(user, updated);
+                accounts := accountOps.put(accounts, user, updated);
                 #ok(())
             };
         };
     };
-    
+
     // Get account details
     public shared(msg) func getAccount() : async ?Account {
-        accounts.get(msg.caller)
+        accountOps.get(accounts, msg.caller)
     };
-    
+
     // Get current cycle exchange rate estimate
     public query func getCyclePrice() : async { cyclesPerICP: Nat; usdPerTrillionCycles: Nat } {
         // Approximate prices (would be dynamic in production)
@@ -123,15 +126,15 @@ persistent actor Billing {
             usdPerTrillionCycles = 100_000; // $1 = 10B cycles (approx)
         }
     };
-    
+
     // Total platform stats
     public query func getPlatformStats() : async { accounts: Nat; totalCycles: Nat } {
         var total : Nat = 0;
-        for ((_, account) in accounts.entries()) {
+        for ((_, account) in accountOps.entries(accounts)) {
             total += account.balance;
         };
         {
-            accounts = accounts.size();
+            accounts = accountOps.size(accounts);
             totalCycles = total;
         }
     };

@@ -2,7 +2,7 @@
 // Decentralized blob storage (S3 equivalent)
 
 import Principal "mo:base/Principal";
-import HashMap "mo:base/HashMap";
+import Map "mo:base/OrderedMap";
 import Blob "mo:base/Blob";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
@@ -10,11 +10,11 @@ import Array "mo:base/Array";
 import Result "mo:base/Result";
 
 persistent actor Storage {
-    
+
     // Types
     public type BucketId = Text;
     public type ObjectKey = Text;
-    
+
     public type StorageObject = {
         key: ObjectKey;
         data: Blob;
@@ -24,7 +24,7 @@ persistent actor Storage {
         createdAt: Time.Time;
         updatedAt: Time.Time;
     };
-    
+
     public type Bucket = {
         id: BucketId;
         owner: Principal;
@@ -32,17 +32,20 @@ persistent actor Storage {
         totalSize: Nat;
         createdAt: Time.Time;
     };
-    
+
     public type UploadResult = Result.Result<StorageObject, Text>;
-    
-    // State
-    // transient: not persisted across canister upgrades (see CLAUDE.md).
-    transient var buckets = HashMap.HashMap<BucketId, Bucket>(10, Text.equal, Text.hash);
-    transient var objects = HashMap.HashMap<Text, StorageObject>(100, Text.equal, Text.hash);
-    
+
+    // Map operations for Text keys (shared by both maps). transient: holds
+    // functions and is reconstructed deterministically on every upgrade.
+    transient let textOps = Map.Make<Text>(Text.compare);
+
+    // State. Persisted across upgrades via enhanced orthogonal persistence.
+    var buckets : Map.Map<BucketId, Bucket> = textOps.empty();
+    var objects : Map.Map<Text, StorageObject> = textOps.empty();
+
     // Create a bucket
     public shared(msg) func createBucket(name: Text) : async Result.Result<Bucket, Text> {
-        switch (buckets.get(name)) {
+        switch (textOps.get(buckets, name)) {
             case (?_) { #err("Bucket already exists") };
             case null {
                 let bucket : Bucket = {
@@ -52,22 +55,22 @@ persistent actor Storage {
                     totalSize = 0;
                     createdAt = Time.now();
                 };
-                buckets.put(name, bucket);
+                buckets := textOps.put(buckets, name, bucket);
                 #ok(bucket)
             };
         };
     };
-    
+
     // Upload an object
     public shared(msg) func uploadObject(
-        bucketId: BucketId, 
-        key: ObjectKey, 
-        data: Blob, 
+        bucketId: BucketId,
+        key: ObjectKey,
+        data: Blob,
         contentType: Text
     ) : async UploadResult {
-        
+
         // Check bucket exists and caller owns it
-        switch (buckets.get(bucketId)) {
+        switch (textOps.get(buckets, bucketId)) {
             case null { return #err("Bucket not found") };
             case (?bucket) {
                 if (not Principal.equal(bucket.owner, msg.caller)) {
@@ -75,7 +78,7 @@ persistent actor Storage {
                 };
             };
         };
-        
+
         let fullKey = bucketId # "/" # key;
         let obj : StorageObject = {
             key = key;
@@ -86,52 +89,52 @@ persistent actor Storage {
             createdAt = Time.now();
             updatedAt = Time.now();
         };
-        
-        objects.put(fullKey, obj);
+
+        objects := textOps.put(objects, fullKey, obj);
         #ok(obj)
     };
-    
+
     // Download an object
     public query func getObject(bucketId: BucketId, key: ObjectKey) : async ?StorageObject {
         let fullKey = bucketId # "/" # key;
-        objects.get(fullKey)
+        textOps.get(objects, fullKey)
     };
-    
+
     // List objects in bucket
     public query func listObjects(bucketId: BucketId) : async [ObjectKey] {
         var result : [ObjectKey] = [];
         let prefix = bucketId # "/";
-        
-        for ((key, obj) in objects.entries()) {
+
+        for ((key, obj) in textOps.entries(objects)) {
             if (Text.startsWith(key, #text prefix)) {
                 result := Array.append(result, [obj.key]);
             };
         };
-        
+
         result
     };
-    
+
     // Delete object
     public shared(msg) func deleteObject(bucketId: BucketId, key: ObjectKey) : async Result.Result<(), Text> {
         let fullKey = bucketId # "/" # key;
-        
-        switch (objects.get(fullKey)) {
+
+        switch (textOps.get(objects, fullKey)) {
             case null { #err("Object not found") };
             case (?obj) {
                 if (not Principal.equal(obj.owner, msg.caller)) {
                     return #err("Not authorized");
                 };
-                objects.delete(fullKey);
+                objects := textOps.delete(objects, fullKey);
                 #ok(())
             };
         };
     };
-    
+
     // Get storage stats
     public query func getStats() : async { buckets: Nat; objects: Nat } {
         {
-            buckets = buckets.size();
-            objects = objects.size();
+            buckets = textOps.size(buckets);
+            objects = textOps.size(objects);
         }
     };
 }
