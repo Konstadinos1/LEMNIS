@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  relay:
+    build:
+      context: ../relay
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://conduit:conduit@postgres:5432/conduit_relay
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      RELAY_HOST: localhost
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://conduit:conduit@postgres:5432/conduit_relay
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      ZEROX_API_KEY: ${ZEROX_API_KEY}
+      PIMLICO_API_KEY: ${PIMLICO_API_KEY}
+      INDEXER_BASE_URL: http://indexer:4001
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: conduit
+      POSTGRES_PASSWORD: conduit
+      POSTGRES_DB: conduit_relay
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conduit"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+  redis_data:
