@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.conduit.app"],
+        "components": [
+          {
+            "/": "/link/*",
+            "comment": "Matches any URL with path starting with /link/"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.com.conduit.app"]
+  }
+}

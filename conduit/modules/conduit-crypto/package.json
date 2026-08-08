@@ -1,0 +1,21 @@
+{
+  "name": "conduit-crypto",
+  "version": "0.1.0",
+  "description": "Rust-backed crypto primitives for Conduit: X25519, Ed25519, AES-256-GCM, HKDF, HMAC",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean",
+    "build:rust:ios": "bash ios/build-rust.sh",
+    "build:rust:android": "cd rust && cargo ndk -t arm64-v8a -t x86_64 build --release"
+  },
+  "keywords": ["expo", "rust", "crypto", "x25519", "ed25519", "aes-gcm"],
+  "peerDependencies": {
+    "expo": "*"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "expo-module-scripts": "*"
+  }
+}
