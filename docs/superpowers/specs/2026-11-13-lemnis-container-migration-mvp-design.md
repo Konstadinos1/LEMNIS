@@ -89,6 +89,8 @@ Sources: [Akash H100](https://akash.network/the-bid/h100-rental-price-2026-cost-
   - npm flags `@dfinity/agent` 0.19 as deprecated ("use `@icp-sdk/core/agent`").
   - `chalk`/`ora`/`inquirer` are ESM-only while the build emits CommonJS. This only works on
     Node ≥ 20.19 / 22.12.
+- **Dependencies:** GitHub's Dependabot reports 7 known vulnerabilities on `main` (4 high,
+  2 moderate, 1 low). The CLI's lockfile is the repo's only package manifest.
 - **Missing pieces:** `dfx.json` declares a `console` assets canister whose `console/dist` doesn't
   exist. The README advertises `lemniskit auth login` / `projects create` and `lemniskit/sdk/`,
   none of which exist.
@@ -104,8 +106,9 @@ Sources: [Akash H100](https://akash.network/the-bid/h100-rental-price-2026-cost-
 **Goals (this round)**
 1. `lemniskit estimate` gives an honest AWS-vs-LEMNIS table from a `lemnis.yaml`, with no
    account needed.
-2. `lemniskit deploy` takes a public Docker image to a running Akash deployment with a public URL,
-   billed from prepaid USD credits.
+2. `lemniskit deploy` takes a project's services (public Docker images) to a running Akash
+   deployment with a public URL, billed from prepaid USD credits. Running it again ships a new
+   version (§7.4 release flow).
 3. The ICP control plane is secure and tested: orgs and members, projects, the deployment
    registry, credits and the usage ledger.
 4. A web console shows credits, runway, deployments and savings.
@@ -122,6 +125,8 @@ Sources: [Akash H100](https://akash.network/the-bid/h100-rental-price-2026-cost-
 - Card checkout and invoices.
 - DAO and token, multi-chain routing, MetaMask login.
 - Python/Rust SDKs, Terraform, a GitHub Action.
+- Importing an AWS bill (Cost and Usage Report). That's next round; this round's baseline is the
+  instance each service runs on today, or a like-for-like match (§7.6).
 
 **Anti-goals (a failure even if it "works")**
 - Savings that aren't real: cherry-picked baselines, hidden costs, unlabeled guesses.
@@ -210,8 +215,14 @@ Sources: [Akash H100](https://akash.network/the-bid/h100-rental-price-2026-cost-
   - Below **24 h of runway**: the CLI and console warn.
   - At **zero**: the bridge closes the org's deployments (reason `#creditsExhausted`) and
     charging stops.
-- **Operator exposure.** The operator fronts Akash escrow. Customer credits are prepaid, so the
-  exposure is at most one metering period plus the escrow top-up buffer.
+- **Operator exposure.** The operator fronts Akash escrow. Customer credits are prepaid, so while
+  the bridge runs the exposure is at most one metering period.
+  - **If the bridge is down**, Akash keeps running deployments from their escrow, which is topped
+    up to at most `ESCROW_RUNWAY_HOURS` (24 h). The exposure is capped at that buffer, and when
+    the escrow runs out Akash itself closes the deployment.
+  - **On restart**, the bridge meters the gap.
+  - **Alerting is deferred**, so a bridge that stays down for over 24 h takes customer apps
+    offline.
 
 ### 7.3 Identity and access *(my calls)*
 
@@ -247,25 +258,60 @@ Sources: [Akash H100](https://akash.network/the-bid/h100-rental-price-2026-cost-
     `removeMember`, `setRole`, `roleOf` (query, for other canisters), `addAdmin`, `isAdmin`.
   - The old `register` / `getUser` / `isAuthenticated` / `getUserCount` are removed.
 - **compute** (becomes the deployment registry; the name stays).
+  - **A deployment is project-level**, like `docker compose up` *(my call: this is what people
+    moving a compose stack expect)*.
+    - One LEMNIS deployment = the whole `lemnis.yaml` = one Akash deployment (one `dseq`).
+    - Services in the same **placement group** run on one provider and reach each other
+      privately by service name.
+    - A service can be put in its own group (for example a GPU service). That group gets its own
+      provider and lease, and groups reach each other only over public URLs.
   - `Project { id; orgId; name; createdAt }`.
-  - `Deployment { id; projectId; orgId; service; spec : ServiceSpec; state; lease : ?AkashLease; awsEquivalentHourlyMicroUsd; pricingCatalogVersion; createdAt; updatedAt; history : [StateChange] }`.
-  - `ServiceSpec { image; cpuMilli; memoryMiB; storageMiB; gpu : ?{ model; count }; ports : [{ port; exposeAs : ?Nat }]; env : [(Text, Text)]; command : ?[Text] }`.
+  - `Deployment { id; projectId; orgId; version : Nat; replaces : ?DeploymentId; spec : ProjectSpec; state; dseq : ?Text; leases : [AkashLease]; awsEquivalentHourlyMicroUsd; pricingCatalogVersion; lastError : ?Text; createdAt; updatedAt; history : [StateChange] }`.
+    A project has one live deployment, except during a replacement, when the old one stays up
+    until the new one is active.
+  - `ProjectSpec { region : ?Text; services : [ServiceSpec] }`.
+  - `ServiceSpec { name; group; image; cpuMilli; memoryMiB; storageMiB; gpu : ?{ model; count }; ports : [{ port; publicAs : ?Nat; privateTo : [Text] }]; env : [(Text, Text)]; command : ?[Text]; awsEquivalentHourlyMicroUsd; maxHourlyMicroUsd }`.
     It is validated on-chain against named limits (CPU, memory, GPU count, env size, image
-    format), and the CLI validates the same rules.
-  - `AkashLease { dseq; gseq; oseq; provider; pricePerHourMicroUsd; uris : [Text] }`.
+    format, service count), and the CLI validates the same rules.
+  - `AkashLease { group; gseq; oseq; provider; pricePerHourMicroUsd; uris : [Text]; lastMeteredAt }`.
   - Lifecycle (whitepaper §5.2, trimmed):
 
 ```
-#pending ──claim──▶ #creating ──lease ok──▶ #active ──requestClose / credits out──▶ #closing ──▶ #closed
-              │                │                                                              ▲
-              └────────────────┴── no bids / Akash error / provider closed lease ──▶ #failed ─┘ (charges stop)
+#pending ─claim─▶ #creating ─leases ok─▶ #active ─requestUpdate─▶ #updating
+                      │                    │  ▲                         │
+                      │                    │  └── updated (or failed: ──┘
+                      │                    │      old version kept, lastError set)
+                      │       requestClose / credits out
+                      │                    ▼
+                      │                 #closing ──────────────▶ #closed
+                      ▼
+                  #failed   (no bid under the cap, Akash error, or provider closed a lease; charges stop)
 ```
 
-  - Member methods: `createProject`, `listProjects`, `requestDeployment` (developer+; one live
-    deployment per project+service), `listDeployments`, `getDeployment`, `requestClose`.
-  - Bridge-only methods: `listWork` (pending + closing), `claim` (idempotent), `attachAkash`
-    (records `dseq` right after creation so a crashed bridge can resume), `markActive`,
-    `markFailed`, `markClosed`.
+  - **Release flow** *(my call)*. Running `lemniskit deploy` on a project with a live deployment
+    makes an update.
+    - **In-place update.** When only images, env, commands or private ports change, the same
+      Akash deployment gets the new manifest. Provider, lease and **URL stay the same**. Each
+      service restarts briefly; zero downtime is not promised.
+    - **Replacement.** When resources, GPUs, groups or public ports change, a new deployment
+      (`version + 1`, `replaces` set) starts next to the old one. The old one closes once the new
+      one is `#active`. There is no downtime, but **the URL changes**, and the CLI warns and asks
+      first (`--yes` skips the prompt).
+    - If the Console API can't update in place (§7.7, to verify), every update is a replacement.
+  - **Bid cap: the 50% promise is enforced** *(my call)*.
+    - A group's maximum Akash bid is the price that keeps the customer's price at or under half
+      the AWS baseline: `awsEquivalentHourly × 0.5 ÷ (1 + markup)`.
+    - A service may set `max_monthly_price` in `lemnis.yaml` to accept a smaller saving.
+    - If no bid comes in under the cap during the bid window, the deployment goes `#failed` with
+      "No provider can run this for less than half the AWS price right now (best bid $X/mo,
+      limit $Y/mo). Retry later, or raise max_monthly_price."
+    - `estimate` shows each limit up front.
+  - Member methods: `createProject`, `listProjects`, `requestDeployment` (developer+; refused if
+    the project already has a live deployment), `requestUpdate(deploymentId, spec)`
+    (developer+), `listDeployments`, `getDeployment`, `requestClose`.
+  - Bridge-only methods: `listWork` (pending, updating, closing), `claim` (idempotent),
+    `attachAkash` (records `dseq` right after creation so a crashed bridge can resume),
+    `markActive`, `markUpdated`, `markMetered`, `markFailed`, `markClosed`.
   - The old `createInstance` / `stopInstance` mock API is removed.
 - **billing** (USD credits, replaces the cycles mock).
   - `OrgAccount { orgId; balanceMicroUsd; grantedMicroUsd; spentMicroUsd; awsEquivalentMicroUsd }`.
@@ -288,6 +334,7 @@ A subset of whitepaper §10.2, validated with zod in `lemniskit/sdk`:
 ```yaml
 version: "1"
 project: shop-api
+region: us                          # optional: providers near your data / for residency
 services:
   api:
     image: ghcr.io/acme/api:1.4.2   # public image, pinned tag
@@ -299,17 +346,30 @@ services:
         as: 80                      # public HTTP
     env:
       NODE_ENV: production          # NOT for secrets (see §6)
-    usage:
-      egress: 500Gi                 # per month, estimate-only
+      INFER_URL: http://infer:8000  # private: same placement group
+    today: { aws: t3a.large }       # optional: what it runs on now = the AWS baseline
+    usage:                          # estimate-only
+      egress: 500Gi                 # per month to the internet
+      from_aws: 300Gi               # per month still pulled from AWS (DB, S3): AWS bills this
   infer:
     image: ghcr.io/acme/infer:2.0.0
     cpu: 8
     memory: 32Gi
     gpu: { model: h100, count: 1 }
+    expose:
+      - port: 8000
+        to: [api]                   # private: only api can reach it
+    # placement: gpu                # optional: own provider (then only public URLs connect)
+    # max_monthly_price: 2600       # optional: accept a saving below 50% for this service
 ```
 
-`lemniskit/sdk` generates the Akash SDL deterministically from a `ServiceSpec` (pure function,
-snapshot-tested). The bridge uses it, and so does `lemniskit sdl` for transparency.
+`lemniskit/sdk` generates **one Akash SDL per project**, deterministically from the
+`ProjectSpec` (pure function, snapshot-tested).
+- It has one placement profile per group, carrying the region attribute and each service's price
+  cap.
+- By default every service is in group `default`; `placement: <name>` moves a service to its own
+  group.
+- The bridge uses it, and so does `lemniskit sdl` for transparency.
 
 ### 7.6 Pricing catalog and estimator
 
@@ -318,11 +378,23 @@ snapshot-tested). The bridge uses it, and so does `lemniskit sdl` for transparen
   - AWS: m7i / c7i / r7i sizes up to 16 vCPU, p5 per-GPU share, EBS gp3, egress tiers.
   - Akash: per-GPU-model hourly rates, plus CPU / memory / storage rates. CPU rates stay marked
     `unverified` until calibrated from real bids (Phase 0 task once `akash.network` is reachable).
-- **Matching.**
-  - AWS equivalent = the cheapest catalog instance with ≥ requested vCPU and ≥ RAM (how AWS makes
-    you buy), plus gp3 for disk, plus egress tiers above 100 GB free.
+- **AWS baseline per service** *(my call)*:
+  - If the service declares `today:` (for example `t3a.large`, `m7g.large` or `fargate`), that is
+    the baseline: what the customer actually pays.
+  - Otherwise it is the cheapest **x86** on-demand instance with ≥ requested vCPU and ≥ RAM among
+    m7i / m7a / c7i / c7a / r7i / r7a (how AWS makes you buy).
+    - Graviton (ARM) is excluded by default, because most images run on amd64 only.
+    - Burstable t3 / t3a are excluded, because they throttle under sustained load.
+    - Both appear as notes when they would be cheaper.
+  - Add gp3 for disk and internet egress above the 100 GB/mo free tier.
   - GPUs: AWS per-GPU rate × count.
-  - LEMNIS = Akash estimate × (1 + markup).
+  - The catalog includes Fargate (per vCPU-hour and per GB-hour) for `today: { aws: fargate }`.
+- **LEMNIS column** = Akash estimate × (1 + markup), **plus** `usage.from_aws` at AWS egress rates.
+  That is data the moved service still pulls from AWS (database, S3, queues), shown as "still
+  paid to AWS". Without that line, the egress saving would hide a new AWS bill.
+- **Region.** An optional `region` (per project or per group) restricts providers to that
+  region, for latency near the customer's data and for EU residency. Expect fewer bids.
+  `estimate` warns when `from_aws` is set but `region` isn't.
 - **Honesty rules (anti-goal guard).** Every table:
   - states the baseline ("AWS on-demand, us-east-1, prices checked <date>");
   - marks unverified numbers;
@@ -337,14 +409,17 @@ Sketch (illustrative numbers):
 $ lemniskit estimate
 LEMNIS estimate vs AWS on-demand (us-east-1) · prices checked 2026-11-11 · markup 20%
 
-SERVICE  SPEC                    AWS EQUIVALENT        AWS $/mo   LEMNIS $/mo  SAVED
-api      2 vCPU · 8 GiB · 20 GiB  m7i.large + gp3         75.18      ~24.00*    68%
-infer    8 vCPU · 32 GiB · 1×H100 p5 (1-GPU share)     5,022.40    2,382.72    53%
-egress   500 GiB/mo              AWS data transfer        36.00        0.00   100%
-──────────────────────────────────────────────────────────────────────────────────
-TOTAL                                                  5,133.58    2,406.72    53%
+SERVICE   SPEC                      AWS BASELINE              AWS $/mo   LEMNIS $/mo  SAVED
+api       2 vCPU · 8 GiB · 20 GiB   t3a.large (runs today)       56.50      ~24.00*    58%
+infer     8 vCPU · 32 GiB · 1×H100  p5 (1-GPU share)          5,022.40    2,382.72    53%
+egress    500 GiB/mo to internet    AWS data transfer            36.00        0.00   100%
+from AWS  300 GiB/mo (DB, S3)       still paid to AWS             0.00       18.00     —
+──────────────────────────────────────────────────────────────────────────────────────────
+TOTAL                                                         5,114.90    2,424.72    53%
 
 * CPU price is an estimate until a real provider bid confirms it.
+ℹ We only take provider bids that keep your price at half the AWS baseline or less
+  (api ≤ $28.25/mo, infer ≤ $2,511.20/mo). Raise a limit with max_monthly_price.
 ℹ With a 3-year AWS Savings Plan ($3.10/GPU-hr) AWS would be ~5% cheaper for "infer".
 ```
 
@@ -358,22 +433,35 @@ itself).
   intervals.
 - **Reconcile loop:**
   1. **Pending → creating.**
-     - `claim`, then create the Akash deployment from the SDL with the initial escrow deposit,
-       then immediately `attachAkash(dseq)`.
-     - Poll bids up to `BID_WAIT_SECONDS`.
-     - Choose the lowest-priced bid, preferring audited providers.
-     - Create the lease and poll lease status for service URIs, then `markActive`.
-     - No bids, or an error → `markFailed` with a human-readable reason and the Akash deployment
-       closed.
+     - `claim`, then create the Akash deployment from the project SDL with the initial escrow
+       deposit, then immediately `attachAkash(dseq)`.
+     - Poll bids for each placement group, up to `BID_WAIT_SECONDS`.
+     - Keep only bids at or under the group's cap and, if a region is set, from providers in
+       that region. Prefer audited providers, then take the lowest price.
+     - Create the leases and poll lease status for service URIs, then `markActive`.
+     - No bid under the cap, or an error → `markFailed` with a human-readable reason (including
+       the best bid seen), and the Akash deployment is closed.
   2. **Resume.** A deployment found in `#creating` with a `dseq` continues from Akash's
      current state instead of creating a duplicate.
-  3. **Closing.** Close on Akash → final metering → `markClosed`.
-  4. **Metering** (hourly) → `billing.recordUsage`. If `exhausted`, request close for the
-     org's deployments.
-  5. **Escrow top-up** when an escrow has less than 24 h of runway.
-  6. **Provider closed a lease** → `markFailed`, stop charging.
+  3. **Updating.**
+     - **In-place:** send the new manifest to the same deployment, wait for the services to
+       report ready, then `markUpdated`. A failed in-place update leaves the previous version
+       running and records `lastError`.
+     - **Replacement:** this is just a new `#pending` deployment. When it is `#active`, the
+       bridge closes the deployment it replaces.
+  4. **Closing.** Close on Akash → final metering → `markClosed`.
+  5. **Metering** (hourly, per lease) → `billing.recordUsage`.
+     - After a restart it meters from each lease's `lastMeteredAt`, so a gap is charged rather
+       than lost.
+     - If `exhausted`, request close for the org's deployments.
+  6. **Escrow top-up** when an escrow has less than `ESCROW_RUNWAY_HOURS` (24 h) of runway.
+  7. **Provider closed a lease** → `markFailed`, stop charging.
+  8. **Orphan sweep** (on startup, then hourly). An Akash deployment owned by the operator but
+     missing from the registry (a crash between create and `attachAkash`) is closed after a
+     grace period, so it can't leak spend.
 - **Mock Akash Console API** (same package) implements the endpoints the bridge uses, with
-  deterministic bids, leases and URIs, plus switches for "no bids" and "provider closes lease".
+  deterministic bids, leases and URIs. It has switches for "no bids", "only bids above the cap",
+  "update fails" and "provider closes lease".
   Tests use it, and so does the default local demo.
 - **Must be verified against the live Console API before coding the client** (docs were
   unreachable from the container):
@@ -382,7 +470,10 @@ itself).
   - certificate/manifest handling;
   - the SDL pricing denomination for managed (USD) wallets;
   - minimum deposits;
-  - whether a GPU price endpoint exists.
+  - whether a GPU price endpoint exists;
+  - whether a deployment can be updated in place (new manifest, same lease);
+  - how providers declare their region;
+  - whether the terms allow reselling compute bought through a managed wallet.
 
 ### 7.8 CLI (`lemniskit`, rewritten; no fake output)
 
@@ -391,7 +482,7 @@ itself).
 | `auth login` · `auth whoami` · `auth link <code>` | anyone |
 | `orgs create <name>` · `orgs list` · `orgs invite --role <r>` (prints a link code) | member / owner |
 | `init [name]` (starter `lemnis.yaml`) · `estimate [-f file]` · `sdl [-f file]` | anyone, offline |
-| `deploy [-f file] [--org]` (validate → estimate → create project if needed → request → wait for `#active` → print URL, $/mo, AWS $/mo, saved %) | developer+ |
+| `deploy [-f file] [--org] [--yes]` (validate → estimate → create project if needed → request a deployment, or an update if one is live, asking first if a replacement will change the URL → wait for `#active` → print URL, $/mo, AWS $/mo, saved %) | developer+ |
 | `deployments list` · `deployments status <id>` · `deployments close <id>` | member / developer+ |
 | `balance` (credits, burn rate, runway, savings to date) · `billing usage` | member |
 | `status` (real reachability of each canister) | anyone |
@@ -444,8 +535,9 @@ console/                  # Vite + React
 - **Motoko unit tests:** `mops test` for pure logic (validation, pricing maths in Motoko,
   lifecycle transitions).
 - **PocketIC integration tests:** multi-principal cases covering owner / teammate / stranger /
-  anonymous / bridge / admin. These include **a regression test for every hole in §3** and the
-  idempotent metering and resume-after-crash cases.
+  anonymous / bridge / admin. These include **a regression test for every hole in §3**, plus
+  idempotent and catch-up metering, resume after a crash, the bid cap, both update paths and
+  the orphan sweep.
 - **TS (vitest):** schema, SDL snapshots, estimator against hand-computed tables, the bridge
   against the mock Akash + PocketIC, and CLI command output.
 - **End to end:**
@@ -496,8 +588,19 @@ Each phase leaves the build green and something demonstrable.
 - Stateless public images only; env is non-secret.
 - Deployments close at zero credit, with a 24 h warning.
 - One draft PR on the given branch.
+- Project-level deployments with compose-like private networking and optional placement
+  groups (§7.4).
+- Release flow: in-place update when only images, env or commands change (URL kept), a
+  replacement otherwise (URL changes, CLI asks first) (§7.4).
+- The 50% promise is enforced: bids above half the AWS baseline are refused unless the customer
+  sets `max_monthly_price` (§7.4).
+- AWS baseline = what the service runs on today if declared, else the cheapest comparable x86
+  instance. `from_aws` traffic is counted, and `region` is optional (§7.6).
+- A 20% markup placeholder. The operator can change it any time; it must stay ≤ ~26% to keep
+  GPU savings over 50%, and the bid cap guards the promise regardless.
+- Orphan sweep and catch-up metering in the bridge (§7.7).
 
-**Open: theirs to decide:** *(filled in after review)*
+**Open: theirs to decide:** *(asked after the review; answers recorded here)*
 
 ## 10. Left to the builder
 
@@ -513,7 +616,8 @@ Each phase leaves the build green and something demonstrable.
 ## 11. Remaining uncertainty
 
 - Akash CPU / memory prices and Console API details are unverified until `akash.network` is
-  reachable.
+  reachable. These include in-place updates, provider region attributes, and whether the terms
+  allow reselling.
 - Whether icp-cli's local network, Internet Identity and PocketIC run inside this container
   depends on the environment approval.
 - Akash provider reliability is variable. Re-deploying to a new provider on failure is deferred,
