@@ -1,6 +1,6 @@
 # LEMNIS — "Move your containers" MVP: Design
 
-*Status: draft for approval · Written 2026-11-13 · Branch `claude/festive-clarke-qgqnna`*
+*Status: awaiting final approval · Written 2026-11-13 · Branch `claude/festive-clarke-qgqnna`*
 
 ---
 
@@ -600,7 +600,17 @@ Each phase leaves the build green and something demonstrable.
   GPU savings over 50%, and the bid cap guards the promise regardless.
 - Orphan sweep and catch-up metering in the bridge (§7.7).
 
-**Open: theirs to decide:** *(asked after the review; answers recorded here)*
+**The user decided after the review (2026-11-14):**
+- **Prove it this round, launch next round.** This round ends with everything built and tested
+  locally, plus one real app deployed on Akash with the operator's API key (~$10–20 of Akash
+  credit). Mainnet canisters, a 24/7 bridge server, the console's permanent domain and
+  publishing `lemniskit` on npm are the next round. Nothing in this round may hard-code a
+  console origin or mainnet canister IDs.
+- **Akash plan B is allowed.** If the card-funded Console API can't be used for reselling (terms
+  forbid it, or bids are priced in crypto), the operator may hold its own AKT/USDC wallet and
+  the bridge signs Akash transactions with it. Customers still pay in USD. The bridge's Akash
+  client therefore sits behind an interface, so the wallet-based client can replace the Console
+  API client without touching the reconcile loop.
 
 ## 10. Left to the builder
 
