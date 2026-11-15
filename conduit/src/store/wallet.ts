@@ -3,12 +3,14 @@ import type { SmartAccount, TokenBalance, Guardian, SessionKey } from '@/types/w
 
 interface WalletState {
   account: SmartAccount | null;
+  myFingerprint: string | null;
   balances: TokenBalance[];
   guardians: Guardian[];
   sessionKeys: SessionKey[];
   isUnlocked: boolean;
 
   setAccount: (account: SmartAccount) => void;
+  setMyFingerprint: (fp: string | null) => void;
   setBalances: (balances: TokenBalance[]) => void;
   setUnlocked: (unlocked: boolean) => void;
   addGuardian: (guardian: Guardian) => void;
@@ -20,12 +22,14 @@ interface WalletState {
 
 export const useWalletStore = create<WalletState>((set) => ({
   account: null,
+  myFingerprint: null,
   balances: [],
   guardians: [],
   sessionKeys: [],
   isUnlocked: false,
 
   setAccount: (account) => set({ account }),
+  setMyFingerprint: (myFingerprint) => set({ myFingerprint }),
   setBalances: (balances) => set({ balances }),
   setUnlocked: (isUnlocked) => set({ isUnlocked }),
   addGuardian: (guardian) =>
@@ -37,5 +41,5 @@ export const useWalletStore = create<WalletState>((set) => ({
   removeSessionKey: (address) =>
     set((s) => ({ sessionKeys: s.sessionKeys.filter((k) => k.address !== address) })),
   reset: () =>
-    set({ account: null, balances: [], guardians: [], sessionKeys: [], isUnlocked: false }),
+    set({ account: null, myFingerprint: null, balances: [], guardians: [], sessionKeys: [], isUnlocked: false }),
 }));

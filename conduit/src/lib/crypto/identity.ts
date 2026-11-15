@@ -1,0 +1,237 @@
+/**
+ * Identity key management.
+ * Ed25519/X25519 keys are generated once and wrapped under a hardware-held
+ * KEK stored in Secure Enclave / StrongBox via expo-secure-store.
+ *
+ * Constraint (§3.4 of PRD): SE/StrongBox only supports secp256r1 (P-256),
+ * not Curve25519. We therefore hold the X25519/Ed25519 material in the
+ * platform Keychain/Keystore with hardware-backed protection and biometric
+ * binding, sealed under a hardware KEK.
+ *
+ * In this build we use expo-secure-store with hardware-backed storage as
+ * the closest API equivalent available from managed Expo.
+ */
+
+import * as SecureStore from 'expo-secure-store';
+import {
+  x25519KeyPairAsync,
+  ed25519KeyPairAsync,
+  mlKemKeyPair,
+  sha256Async,
+  toBase64,
+  toHex,
+  fromBase64,
+  type X25519KeyPair,
+  type Ed25519KeyPair,
+} from './primitives';
+import { generateSignedPreKey, generateKyberPreKey, type IdentityKeyBundle, type KyberPreKeyPair } from './x3dh';
+
+// Re-export for convenience so callers don't need to import from primitives
+export type { X25519KeyPair };
+
+const KEYS = {
+  IDENTITY_DH: 'conduit.identity.dh',
+  IDENTITY_ED: 'conduit.identity.ed',
+  SPK: 'conduit.identity.spk',
+  KYBER_PRE_KEY: 'conduit.identity.kpk',
+  OTK_PREFIX: 'conduit.identity.otk.',
+  REGISTRATION_ID: 'conduit.identity.regId',
+};
+
+const SE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  requireAuthentication: true,
+};
+
+export async function generateAndStoreIdentity(): Promise<IdentityKeyBundle> {
+  const identityKeyDh = await x25519KeyPairAsync();
+  const identityKeyEd = await ed25519KeyPairAsync();
+  const oneTimePreKeys = await Promise.all(
+    Array.from({ length: 10 }, () => x25519KeyPairAsync()),
+  );
+  const registrationId = (Math.random() * 0x3fff | 0) + 1;
+  const [signedPreKey, kyberPreKey] = await Promise.all([
+    generateSignedPreKey(identityKeyEd, 1),
+    generateKyberPreKey(identityKeyEd, 1),
+  ]);
+
+  await SecureStore.setItemAsync(KEYS.IDENTITY_DH, JSON.stringify({
+    pub: toBase64(identityKeyDh.publicKey),
+    sec: toBase64(identityKeyDh.secretKey),
+  }), SE_OPTIONS);
+
+  await SecureStore.setItemAsync(KEYS.IDENTITY_ED, JSON.stringify({
+    pub: toBase64(identityKeyEd.publicKey),
+    sec: toBase64(identityKeyEd.secretKey),
+  }), SE_OPTIONS);
+
+  await SecureStore.setItemAsync(KEYS.SPK, JSON.stringify({
+    keyId: signedPreKey.keyId,
+    pub: toBase64(signedPreKey.keyPair.publicKey),
+    sec: toBase64(signedPreKey.keyPair.secretKey),
+    sig: toBase64(signedPreKey.signature),
+  }), SE_OPTIONS);
+
+  await SecureStore.setItemAsync(KEYS.KYBER_PRE_KEY, JSON.stringify({
+    keyId: kyberPreKey.keyId,
+    pub: toBase64(kyberPreKey.keyPair.publicKey),
+    sec: toBase64(kyberPreKey.keyPair.secretKey),
+    sig: toBase64(kyberPreKey.signature),
+  }), SE_OPTIONS);
+
+  for (let i = 0; i < oneTimePreKeys.length; i++) {
+    await SecureStore.setItemAsync(`${KEYS.OTK_PREFIX}${i}`, JSON.stringify({
+      pub: toBase64(oneTimePreKeys[i].publicKey),
+      sec: toBase64(oneTimePreKeys[i].secretKey),
+    }), SE_OPTIONS);
+  }
+
+  await SecureStore.setItemAsync(KEYS.REGISTRATION_ID, String(registrationId));
+
+  return { identityKeyDh, identityKeyEd, signedPreKey, kyberPreKey, oneTimePreKeys, registrationId };
+}
+
+export async function loadIdentity(): Promise<IdentityKeyBundle | null> {
+  try {
+    const [dhRaw, edRaw, spkRaw, kpkRaw, regIdRaw] = await Promise.all([
+      SecureStore.getItemAsync(KEYS.IDENTITY_DH, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.IDENTITY_ED, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.SPK, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.KYBER_PRE_KEY, SE_OPTIONS),
+      SecureStore.getItemAsync(KEYS.REGISTRATION_ID),
+    ]);
+
+    if (!dhRaw || !edRaw || !spkRaw || !kpkRaw || !regIdRaw) return null;
+
+    const dh  = JSON.parse(dhRaw);
+    const ed  = JSON.parse(edRaw);
+    const spk = JSON.parse(spkRaw);
+    const kpk = JSON.parse(kpkRaw);
+
+    const identityKeyDh: X25519KeyPair = {
+      publicKey: fromBase64(dh.pub),
+      secretKey: fromBase64(dh.sec),
+    };
+    const identityKeyEd: Ed25519KeyPair = {
+      publicKey: fromBase64(ed.pub),
+      secretKey: fromBase64(ed.sec),
+    };
+
+    const kyberPreKey: KyberPreKeyPair = {
+      keyId: kpk.keyId,
+      keyPair: { publicKey: fromBase64(kpk.pub), secretKey: fromBase64(kpk.sec) },
+      signature: fromBase64(kpk.sig),
+    };
+
+    const oneTimePreKeys: X25519KeyPair[] = [];
+    for (let i = 0; i < 10; i++) {
+      const raw = await SecureStore.getItemAsync(`${KEYS.OTK_PREFIX}${i}`, SE_OPTIONS);
+      if (!raw) break;
+      const k = JSON.parse(raw);
+      oneTimePreKeys.push({ publicKey: fromBase64(k.pub), secretKey: fromBase64(k.sec) });
+    }
+
+    return {
+      identityKeyDh,
+      identityKeyEd,
+      signedPreKey: {
+        keyId: spk.keyId,
+        keyPair: { publicKey: fromBase64(spk.pub), secretKey: fromBase64(spk.sec) },
+        signature: fromBase64(spk.sig),
+      },
+      kyberPreKey,
+      oneTimePreKeys,
+      registrationId: Number(regIdRaw),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function hasIdentity(): Promise<boolean> {
+  const raw = await SecureStore.getItemAsync(KEYS.IDENTITY_DH);
+  return raw !== null;
+}
+
+/**
+ * Return the relay identity fingerprint: lowercase_hex(SHA-256(X25519 DH public key)).
+ * This matches how the relay derives fingerprints in Relay.Prekeys.derive_fingerprint/1.
+ */
+export async function getMyFingerprint(): Promise<string | null> {
+  const raw = await SecureStore.getItemAsync(KEYS.IDENTITY_DH);
+  if (!raw) return null;
+  const { pub } = JSON.parse(raw) as { pub: string };
+  const hash = await sha256Async(fromBase64(pub));
+  return toHex(hash);
+}
+
+/**
+ * Derive a peer's relay fingerprint from their X25519 DH public key bytes
+ * (as returned by the prekey bundle endpoint — a JSON number[]).
+ */
+export async function fingerprintFromDhKeyAsync(dhPublicKey: Uint8Array | number[]): Promise<string> {
+  const bytes = dhPublicKey instanceof Uint8Array
+    ? dhPublicKey
+    : new Uint8Array(dhPublicKey as number[]);
+  const hash = await sha256Async(bytes);
+  return toHex(hash);
+}
+
+/**
+ * Load a single OTK private key by its key ID.
+ * Initial OTKs (keyId 0-9) live at `conduit.identity.otk.<index>`.
+ * Replenished OTKs (keyId = timestamp-based) live at the same prefix.
+ * Returns undefined if the key doesn't exist or has been consumed.
+ */
+export async function loadOtkByKeyId(keyId: number): Promise<X25519KeyPair | undefined> {
+  try {
+    const raw = await SecureStore.getItemAsync(`${KEYS.OTK_PREFIX}${keyId}`, SE_OPTIONS);
+    if (!raw) return undefined;
+    const { pub, sec } = JSON.parse(raw) as { pub: string; sec: string };
+    return { publicKey: fromBase64(pub), secretKey: fromBase64(sec) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Generate `count` fresh X25519 OTKs, persist private halves in SecureStore,
+ * and return the public halves with their key IDs for upload to the relay.
+ *
+ * Key IDs use the current timestamp as a base so they never collide with the
+ * initial 0-9 set uploaded during onboarding.
+ */
+export async function replenishOtks(
+  count = 10
+): Promise<Array<{ keyId: number; publicKey: Uint8Array }>> {
+  // Timestamp-based start ID avoids colliding with the initial 0-9 key IDs
+  const startId = Date.now();
+  const newOtks = await Promise.all(Array.from({ length: count }, () => x25519KeyPairAsync()));
+
+  for (let i = 0; i < newOtks.length; i++) {
+    await SecureStore.setItemAsync(
+      `${KEYS.OTK_PREFIX}${startId + i}`,
+      JSON.stringify({
+        pub: toBase64(newOtks[i].publicKey),
+        sec: toBase64(newOtks[i].secretKey),
+      }),
+      SE_OPTIONS,
+    );
+  }
+
+  return newOtks.map((k, i) => ({ keyId: startId + i, publicKey: k.publicKey }));
+}
+
+/** Safety number — 60-digit decimal string from the two identity keys. */
+export function computeSafetyNumber(
+  myIdentityKey: Uint8Array,
+  theirIdentityKey: Uint8Array
+): string {
+  const sorted = [toBase64(myIdentityKey), toBase64(theirIdentityKey)].sort();
+  const combined = new TextEncoder().encode(sorted.join(''));
+  // Simple deterministic fingerprint — production uses iterative SHA-512
+  return Array.from(combined)
+    .map((b) => (b % 10).toString())
+    .join('')
+    .slice(0, 60);
+}

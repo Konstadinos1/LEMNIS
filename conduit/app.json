@@ -21,13 +21,44 @@
       "infoPlist": {
         "NSFaceIDUsageDescription": "Used to authenticate swap and wallet operations.",
         "NSCameraUsageDescription": "Used to scan QR codes for wallet addresses.",
-        "NSLocalNetworkUsageDescription": "Used for local IPC communication."
+        "NSLocalNetworkUsageDescription": "Used for local IPC communication.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        },
+        "NSPinnedDomains": {
+          "relay.conduit.app": {
+            "NSIncludesSubdomains": false,
+            "NSPinnedLeafIdentities": [
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_RELAY_LEAF_SPKI_SHA256_BASE64="
+              },
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_RELAY_BACKUP_SPKI_SHA256_BASE64="
+              }
+            ]
+          },
+          "api.conduit.app": {
+            "NSIncludesSubdomains": false,
+            "NSPinnedLeafIdentities": [
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_API_LEAF_SPKI_SHA256_BASE64="
+              },
+              {
+                "SPKI-SHA256-BASE64": "REPLACE_WITH_API_BACKUP_SPKI_SHA256_BASE64="
+              }
+            ]
+          }
+        }
       },
       "entitlements": {
         "com.apple.developer.associated-domains": [
           "webcredentials:conduit.app",
           "applinks:conduit.app"
-        ]
+        ],
+        "com.apple.security.application-groups": [
+          "group.com.conduit.app"
+        ],
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -40,19 +71,33 @@
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",
         "CAMERA",
-        "VIBRATE"
-      ]
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#6C5CE7",
+          "sounds": []
+        }
+      ],
       [
         "expo-local-authentication",
         {
           "faceIDPermission": "Used to authenticate wallet operations."
         }
       ],
-      "react-native-mmkv"
+      "react-native-mmkv",
+      "./plugins/withCertificatePinning",
+      "./plugins/withNotificationServiceExtension",
+      "./plugins/withFirebaseMessagingService"
     ],
     "experiments": {
       "typedRoutes": true

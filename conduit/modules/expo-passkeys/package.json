@@ -1,0 +1,19 @@
+{
+  "name": "expo-passkeys",
+  "version": "0.1.0",
+  "description": "WebAuthn/passkey Expo Module — secp256r1 keys in Secure Enclave (iOS) and StrongBox (Android)",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean"
+  },
+  "keywords": ["expo", "passkey", "webauthn", "secp256r1"],
+  "peerDependencies": {
+    "expo": "*"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "expo-module-scripts": "*"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "conduit-security",
+  "version": "0.1.0",
+  "description": "RASP module for Conduit: jailbreak/root detection, debugger detection, Frida detection, screenshot protection",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean"
+  },
+  "keywords": ["expo", "security", "rasp", "jailbreak", "frida"],
+  "peerDependencies": {
+    "expo": "*"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "expo-module-scripts": "*"
+  }
+}

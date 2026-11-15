@@ -13,3 +13,6 @@ web-build/
 .env
 android/
 ios/
+# Allow native Expo module source under modules/
+!modules/**/android/
+!modules/**/ios/
