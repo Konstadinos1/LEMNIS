@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Conduit",
+    "slug": "conduit",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "conduit",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090B"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.conduit.app",
+      "config": {
+        "usesNonExemptEncryption": true
+      },
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Used to authenticate swap and wallet operations.",
+        "NSCameraUsageDescription": "Used to scan QR codes for wallet addresses.",
+        "NSLocalNetworkUsageDescription": "Used for local IPC communication."
+      },
+      "entitlements": {
+        "com.apple.developer.associated-domains": [
+          "webcredentials:conduit.app",
+          "applinks:conduit.app"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09090B"
+      },
+      "package": "com.conduit.app",
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "CAMERA",
+        "VIBRATE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Used to authenticate wallet operations."
+        }
+      ],
+      "react-native-mmkv"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
