@@ -1,0 +1,23 @@
+{
+    "name": "@lemnis/protocol-28-tests",
+    "version": "0.1.0",
+    "private": true,
+    "description": "PocketIC integration tests for the Protocol 28 canisters",
+    "type": "module",
+    "scripts": {
+        "build:canisters": "bash scripts/build-canisters.sh",
+        "pretest": "npm run build:canisters",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@dfinity/pic": "0.25.0",
+        "@icp-sdk/core": "^6.0.0",
+        "@types/node": "^22.0.0",
+        "typescript": "^5.6.0",
+        "vitest": "^3.2.0"
+    },
+    "allowScripts": {
+        "@dfinity/pic@0.25.0": true
+    }
+}
