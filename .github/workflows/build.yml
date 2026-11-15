@@ -32,6 +32,43 @@ jobs:
             echo "::endgroup::"
           done
 
+  canister-tests:
+    name: Canister integration tests (PocketIC)
+    runs-on: ubuntu-latest
+    env:
+      # Pinned so test results are reproducible; bump together.
+      MOC_VERSION: 2.2.2
+      MOTOKO_BASE_REF: moc-1.9.0
+    defaults:
+      run:
+        working-directory: protocol-28/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install moc and Motoko base library
+        run: |
+          mkdir -p "$RUNNER_TEMP/moc"
+          curl -fsSL "https://github.com/dfinity/motoko/releases/download/${MOC_VERSION}/motoko-Linux-x86_64-${MOC_VERSION}.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/moc"
+          git clone --quiet --depth 1 --branch "$MOTOKO_BASE_REF" \
+            https://github.com/dfinity/motoko-base.git "$RUNNER_TEMP/motoko-base"
+          echo "MOC=$RUNNER_TEMP/moc/moc" >> "$GITHUB_ENV"
+          echo "MOTOKO_BASE=$RUNNER_TEMP/motoko-base/src" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: protocol-28/tests/package-lock.json
+
+      # npm 10 runs @dfinity/pic's postinstall, which downloads the PocketIC
+      # server pinned in .pocket-ic-version.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
   cli:
     name: Build Lemniskit CLI
     runs-on: ubuntu-latest
