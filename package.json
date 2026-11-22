@@ -1,0 +1,24 @@
+{
+  "name": "lemnis-monorepo",
+  "version": "0.2.0",
+  "private": true,
+  "description": "LEMNIS Decentralized Cloud Platform — Protocol 28 Canisters, Lemniskit SDK/CLI, and Web Console & Website",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "protocol-28/tests",
+    "lemniskit/sdk",
+    "lemniskit/cli",
+    "console"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@lemnis/sdk && npm run build --workspace=@lemnis/lemniskit && npm run build --workspace=@lemnis/console",
+    "test": "npm test --workspace=@lemnis/protocol-28-tests && npm test --workspace=@lemnis/sdk && npm test --workspace=@lemnis/lemniskit && npm test --workspace=@lemnis/console",
+    "test:canisters": "npm test --workspace=@lemnis/protocol-28-tests",
+    "test:sdk": "npm test --workspace=@lemnis/sdk",
+    "test:cli": "npm test --workspace=@lemnis/lemniskit",
+    "test:console": "npm test --workspace=@lemnis/console",
+    "dev:console": "npm run dev --workspace=@lemnis/console"
+  }
+}

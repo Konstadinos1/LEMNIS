@@ -1,0 +1,31 @@
+{
+  "name": "@lemnis/sdk",
+  "version": "0.2.0",
+  "description": "TypeScript SDK for LEMNIS — lemnis.yaml schema, verified AWS-vs-LEMNIS estimator, Akash SDL generator, and Protocol 28 Candid bindings",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@icp-sdk/core": "^6.1.1",
+    "js-yaml": "^4.1.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  }
+}
