@@ -1,203 +1,132 @@
-# LEMNIS 🌀
+# LEMNIS
 
 > **The Decentralized Cloud Platform**  
-> AWS/GCP/Azure alternative running on ICP + Akash
+> Move existing Docker containers & GPU workloads to Akash Network with an audited Internet Computer (Protocol 28) control plane.
 
-[![ICP](https://img.shields.io/badge/Internet%20Computer-Protocol-blueviolet)](https://internetcomputer.org)
-[![Akash](https://img.shields.io/badge/Akash-Network-red)](https://akash.network)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-
----
-
-## 🚀 What is LEMNIS?
-
-LEMNIS is a **fully decentralized cloud platform** providing AWS/GCP/Azure-equivalent services on blockchain infrastructure. No single points of failure. No censorship. 65-85% cost savings.
-
-| Traditional Cloud | LEMNIS |
-|-------------------|--------|
-| AWS outages take down the internet | Multi-node consensus, no SPOF |
-| Locked into proprietary APIs | Open protocols, portable |
-| Deplatformed at provider's discretion | Permissionless, unstoppable |
-| Unpredictable bills | Transparent on-chain metering |
-| Zero governance input | DAO-governed platform |
+[![ICP](https://img.shields.io/badge/Internet%20Computer-Protocol%2028-14171B)](https://internetcomputer.org)
+[![Akash](https://img.shields.io/badge/Akash-Network-D84B1D)](https://akash.network)
+[![License](https://img.shields.io/badge/License-Apache%202.0-137752.svg)](LICENSE)
 
 ---
 
-## 🏗️ Architecture
+## What is LEMNIS?
+
+LEMNIS helps engineering teams cut AWS/GCP/Azure on-demand cloud bills by **50%+** with zero multi-year lock-in. Each workload runs on the infrastructure where the economics actually work:
+
+- **Protocol 28 (Internet Computer canisters):** Persistent, tamper-proof control plane — Identity & Org RBAC, Deployment Registry with enforced 50% bid caps, Control-Plane Blobs, KV Metadata, and Idempotent micro-USD/Cycles Billing.
+- **Akash Network (Compute Plane):** Unmodified Docker/OCI containers and NVIDIA H100/A100 GPU inference at 50–75% below AWS on-demand with `$0` marginal egress markup.
+- **Lemniskit (`@lemnis/sdk` + `@lemnis/lemniskit` CLI):** Offline `lemnis.yaml` validation, verified Nov 2026 AWS-vs-LEMNIS savings estimation, deterministic Akash SDL v2.0 generation, and real ICP replica health checks.
+- **LEMNIS Website & Cloud Console (`console/`):** Public landing website, interactive Savings Estimator & SDL Studio, searchable Whitepaper v3.1 Reader, and interactive Cloud Console App built to `console/dist` for ICP asset canister hosting.
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         LEMNIS CLOUD                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                   LEMNISKIT (SDK)                        │    │
-│  │         CLI • Client Libraries • Dev Portal             │    │
-│  └───────────────────────────┬─────────────────────────────┘    │
-│                              │                                   │
-│  ┌───────────────────────────▼─────────────────────────────┐    │
-│  │                   PROTOCOL 28 (Core)                     │    │
-│  │                                                          │    │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ │    │
-│  │  │Identity│ │Compute │ │Storage │ │Database│ │Billing │ │    │
-│  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ │    │
-│  │                                                          │    │
-│  └──────────────────────────┬───────────────────────────────┘    │
-│                             │                                    │
-│         ┌───────────────────┼───────────────────┐               │
-│         ▼                   ▼                   ▼               │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
-│  │     ICP     │    │    AKASH    │    │IPFS/Arweave│         │
-│  │  Canisters  │    │ Containers  │    │  Storage   │         │
-│  └─────────────┘    └─────────────┘    └─────────────┘         │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                     LEMNIS WEBSITE & CONSOLE                        │
+│     Public Site • Savings Estimator • Whitepaper v3.1 • App         │
+├─────────────────────────────────────────────────────────────────────┤
+│                      LEMNISKIT (@lemnis/sdk + CLI)                  │
+│   lemnis.yaml Zod Schema • Pricing Catalog • Akash SDL v2.0 Gen     │
+├─────────────────────────────────────────────────────────────────────┤
+│                 PROTOCOL 28 (5 Hardened ICP Canisters)              │
+│   identity  •  compute  •  billing  •  storage  •  database         │
+├──────────────────────────────┬──────────────────────────────────────┤
+│       INTERNET COMPUTER      │            AKASH NETWORK             │
+│  Persistent Control Plane    │  Docker Containers & GPU Leases      │
+└──────────────────────────────┴──────────────────────────────────────┘
 ```
-
-### Three-Tier Structure
-
-| Layer | Name | Purpose |
-|-------|------|---------|
-| 🎨 **Brand** | **LEMNIS** | User-facing cloud platform |
-| ⚙️ **Backend** | **Protocol 28** | Core canister infrastructure |
-| 🛠️ **Tooling** | **Lemniskit** | CLI, SDKs, dev tools |
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
-# Install CLI
-npm install -g @lemnis/lemniskit
-
-# Login with Internet Identity
-lemniskit auth login
-
-# Create a project
-lemniskit projects create my-app
-
-# Deploy
-lemniskit deploy
-```
-
----
-
-## 📦 Services
-
-| Service | Description | Backend |
-|---------|-------------|---------|
-| **Compute** | Containers & WASM | ICP + Akash |
-| **Storage** | S3-compatible buckets | IPFS + Arweave |
-| **Database** | Key-value store | ICP Stable Memory |
-| **Identity** | Auth & IAM | Internet Identity |
-| **Billing** | Usage metering | Stablecoin |
-
----
-
-## 💰 Pricing
-
-### Indie Developer Plans
-
-| Plan | Price | Compute | Storage | Bandwidth |
-|------|-------|---------|---------|-----------|
-| **Free** | $0/mo | 100M cycles | 1 GB | 10 GB |
-| **Indie** | $9/mo | 5B cycles | 20 GB | 100 GB |
-| **Pro** | $29/mo | 20B cycles | 100 GB | 500 GB |
-
-### vs AWS (65-85% savings)
-
-| Workload | AWS | LEMNIS |
-|----------|-----|--------|
-| API (10M req/mo) | $50 | $15 |
-| Container (24/7) | $100 | $30 |
-| GPU (100 hrs) | $433 | $140 |
-
----
-
-## 🗳️ DAO Governance
-
-LEMNIS is governed by token holders through:
-- **Technical Committee** - Protocol upgrades
-- **Treasury Committee** - Budget allocation
-- **Grants Committee** - Developer funding
-
-[Learn more →](docs/ARCHITECTURE.md#section-3-dao-governance-architecture)
-
----
-
-## 📁 Project Structure
-
-```
-lemnis/
-├── protocol-28/           # Core canisters (Motoko)
-│   ├── identity/          # IAM + Auth
-│   ├── compute/           # Deployment management
-│   ├── storage/           # Object storage
-│   ├── database/          # Key-value store
-│   └── billing/           # Cycles management
-│
-├── lemniskit/             # Developer tools
-│   ├── cli/               # Command-line interface
-│   └── sdk/               # Client libraries
-│
-├── console/               # Web dashboard
-│
-├── docs/                  # Documentation
-│   └── ARCHITECTURE.md    # Full whitepaper
-│
-├── dfx.json               # ICP config
-└── README.md
-```
-
----
-
-## 🛠️ Development
-
-```bash
-# Clone
-git clone https://github.com/Konstadinos1/LEMNIS.git
-cd LEMNIS
-
-# Start local ICP replica
-dfx start --background
-
-# Deploy canisters
-dfx deploy
-
-# Run CLI
-cd lemniskit/cli
+# Install all workspace packages (Node 22+)
 npm install
-npm run dev -- --help
+
+# Build @lemnis/sdk, @lemnis/lemniskit CLI, and @lemnis/console (to console/dist)
+npm run build
+
+# Run full verification suite (Motoko Wasm/Candid compile + SDK + CLI + Console tests)
+npm test
+
+# Launch the LEMNIS Website & Cloud Console App locally
+npm run dev:console
+```
+
+### Lemniskit CLI
+
+```bash
+# Generate a starter lemnis.yaml
+npm run dev --workspace=@lemnis/lemniskit -- init my-api
+
+# Validate schema and confidentiality warnings
+npm run dev --workspace=@lemnis/lemniskit -- validate -f lemnis.yaml
+
+# Estimate monthly AWS on-demand vs LEMNIS savings (offline)
+npm run dev --workspace=@lemnis/lemniskit -- estimate -f lemnis.yaml
+
+# Generate deterministic Akash SDL v2.0 with 50% bid caps
+npm run dev --workspace=@lemnis/lemniskit -- sdl -f lemnis.yaml
+
+# Check real ICP replica connectivity
+npm run dev --workspace=@lemnis/lemniskit -- status --network local
 ```
 
 ---
 
-## 📅 Roadmap
+## Audited Pricing Snapshot (Checked November 2026, us-east-1)
 
-| Quarter | Milestone |
-|---------|-----------|
-| **Q1** | MVP Launch - Auth, Compute, Console |
-| **Q2** | Storage + SDKs |
-| **Q3** | Observability + Autoscaling |
-| **Q4** | GA Launch + Enterprise |
+| Monthly Workload (730 hrs) | AWS On-Demand | LEMNIS (incl. 20% markup) | Net Saving | Note |
+|----------------------------|---------------|---------------------------|------------|------|
+| **Web API** (2 vCPU · 8 GiB · 20 GiB) | `$75.18` (`m7i.large` + gp3) | **`~$23.16`** *(est.)* | **~69%** | Confirmed on live Akash bid |
+| **Web API + 500 GiB Egress** | `$111.18` (`+$36` egress) | **`~$23.16`** *(est.)* | **~79%** | Bandwidth included in Akash bid |
+| **H100 GPU (100 hrs/mo)** | `$688.00` (`$6.88/GPU-hr`) | **`~$288.00`** (`$2.88/hr`) | **~58%** | 3-yr AWS Savings Plan (`~$3.10/hr`) narrows gap |
+| **Bulk Storage (100 GB, low egress)** | `$2.30` (S3 Standard) | `$5.00` IPFS / `$44.60` ICP | **AWS wins** | ICP storage is for small control-plane state only |
 
----
-
-## 📖 Documentation
-
-- [**Full Architecture Whitepaper**](docs/ARCHITECTURE.md) - 15 sections, enterprise-grade
-- [Internet Computer Docs](https://internetcomputer.org/docs)
-- [Akash Network Docs](https://akash.network/docs)
+See [`docs/PRICING.md`](docs/PRICING.md) for complete rates and disclosures.
 
 ---
 
-## 📜 License
+## Project Structure
 
-Apache 2.0 - See [LICENSE](LICENSE)
+```
+LEMNIS/
+├── protocol-28/                # Core canisters (Motoko persistent actors)
+│   ├── identity/main.mo        # Principal registry, Org RBAC, 1x CLI link codes
+│   ├── compute/main.mo         # ICP instances + Akash deployment registry & bid caps
+│   ├── storage/main.mo         # Nested private-by-default control-plane buckets
+│   ├── database/main.mo        # Nested owner-isolated key-value tables
+│   ├── billing/main.mo         # Cycles + prepaid micro-USD credits & allowlisted chargers
+│   └── tests/                  # Automated Motoko Wasm/Candid & security invariant tests
+├── lemniskit/
+│   ├── sdk/                    # @lemnis/sdk (Zod schema, catalog, estimator, SDL, Candid IDL)
+│   └── cli/                    # @lemnis/lemniskit CLI
+├── console/                    # @lemnis/console (Website + Whitepaper Reader + Cloud Console -> dist/)
+├── docs/
+│   ├── ARCHITECTURE.md         # Enterprise Architecture Whitepaper v3.1 (audited)
+│   ├── PRICING.md              # Verified Nov 2026 pricing & honest comparisons
+│   ├── SECURITY.md             # Implemented Protocol 28 controls & confidentiality model
+│   ├── GOVERNANCE.md           # Progressive ICP SNS DAO governance
+│   └── ROADMAP.md              # Quarterly milestones
+├── dfx.json                    # ICP canister config (5 Motoko canisters + console assets)
+└── package.json                # Root npm workspaces
+```
 
 ---
 
-<p align="center">
-  <strong>True Decentralization. No Compromises.</strong><br>
-  <em>Built on ICP + Akash</em>
-</p>
+## Documentation
+
+- [**Enterprise Architecture Whitepaper v3.1**](docs/ARCHITECTURE.md) — Audited architecture, changelog, pricing & confidentiality threat model
+- [**Security & Confidentiality**](docs/SECURITY.md) — Implemented Protocol 28 security controls
+- [**Pricing**](docs/PRICING.md) — Verified AWS on-demand vs LEMNIS baselines
+- [**Governance**](docs/GOVERNANCE.md) — Progressive ICP SNS DAO model
+- [**Roadmap**](docs/ROADMAP.md) — Completed & upcoming milestones
+
+---
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE).

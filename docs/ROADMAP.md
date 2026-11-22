@@ -4,7 +4,7 @@
 
 ```
 Q1 ─────────────► Q2 ─────────────► Q3 ─────────────► Q4
-   MVP Launch       Storage+SDK       Observability     GA Launch
+   Core & MVP       Storage+SDKs      Observability     Enterprise GA
    $25K             $45K              $60K              $80K
 ```
 
@@ -12,97 +12,48 @@ Q1 ─────────────► Q2 ──────────�
 
 ## Q1: Foundation & MVP ($25K)
 
-### Month 1: Core Infrastructure
-- [ ] ICP canister: IAM (principals, API keys)
-- [ ] ICP canister: Resource Registry
-- [ ] Basic CLI (auth, project create)
-- [ ] Local dev environment
+### Completed in Repository
+- [x] Hardened Protocol 28 Motoko canisters (`identity`, `compute`, `storage`, `database`, `billing`) with persistent `OrderedMap` state, anonymous rejection, RBAC orgs, nested bucket/table isolation, `authorizedChargers`, and 50% bid-cap enforcement
+- [x] Automated Motoko compilation, Wasm/Candid verification & security test suite (`protocol-28/tests`)
+- [x] `@lemnis/sdk` — Zod `lemnis.yaml` schema, verified Nov 2026 AWS/Akash pricing catalog, honest savings estimator, deterministic Akash SDL v2.0 generator, and Protocol 28 Candid bindings
+- [x] `@lemnis/lemniskit` CLI — real `init`, `validate`, `estimate`, `sdl`, `status`, and `deploy` commands (stubs removed)
+- [x] `console/` — Public LEMNIS Website, Interactive Whitepaper v3.1 Reader, Live Savings Estimator, and Interactive Blockchain Cloud Console App (buildable to `console/dist` for ICP asset canister)
+- [x] Audited Whitepaper v3.1 & honest pricing disclosures
 
-### Month 2: Compute Layer
-- [ ] Akash deployment integration
-- [ ] SDL file generation
-- [ ] Deployment lifecycle (create, delete, logs)
-- [ ] Environment variables + secrets
-
-### Month 3: MVP Launch
-- [ ] Web console (dashboard, deployments)
-- [ ] Prepaid stablecoin billing
-- [ ] Documentation site
-- [ ] 5 beta customers onboarded
-
-**Exit Criteria:**
-- ✅ Deploy containers via LEMNIS
-- ✅ Internet Identity authentication
-- ✅ Prepaid billing working
-- ✅ Basic logs visible
+### Remaining Q1 Exit Milestones
+- [ ] Off-chain `akash-bridge` daemon connected to live Akash Console API / wallet
+- [ ] End-to-end live smoke deployment on Akash Network with public HTTPS URL
+- [ ] Mainnet ICP canister deployment + custom domain + first 5 beta customers
 
 ---
 
-## Q2: Storage & SDKs ($45K)
+## Q2: Bulk Storage, Payments & Multi-Language SDKs ($45K)
 
-- [ ] IPFS bucket integration (Storacha)
-- [ ] S3-compatible API wrapper
-- [ ] ICP stable memory KV store
-- [ ] TypeScript SDK
-- [ ] Python SDK
-- [ ] GitHub Actions integration
-- [ ] Terraform provider (basic)
+- [ ] IPFS / Storacha bucket integration + S3-compatible API wrapper (zero egress fees)
+- [ ] Automated Stripe / USDC prepaid credit top-up
+- [ ] AWS Cost & Usage Report (CUR) importer for instant bill-wide estimates
+- [ ] Python & Rust SDKs
+- [ ] GitHub Actions `lemnis/deploy-action@v1` & Terraform provider
 
 ---
 
-## Q3: Observability ($60K)
+## Q3: Observability, Autoscaling & Chain-Key Bridge ($60K)
 
-- [ ] Structured logging system
-- [ ] Metrics collection (Prometheus)
-- [ ] Alerting engine
-- [ ] Dashboard builder
-- [ ] Autoscaling for Akash
-- [ ] Canary deployments
+- [ ] Streaming container logs & Prometheus metrics
+- [ ] Alerting engine & dashboard builder
+- [ ] Akash autoscaling, canary & blue/green automated rollouts
+- [ ] ICP Chain-Key ECDSA (`sign_with_ecdsa`) Cosmos/Akash signing pilot
 
 ---
 
 ## Q4: Enterprise & GA ($80K)
 
-- [ ] OIDC/SAML federation
-- [ ] Custom roles and policies
+- [ ] Independent third-party security audit of Protocol 28 canisters
+- [ ] OIDC/SAML enterprise federation & custom IAM policies
 - [ ] SOC 2 Type I certification
-- [ ] Multi-region support
-- [ ] SLA tiers (99.9%, 99.99%)
-- [ ] Enterprise sales launch
+- [ ] Multi-region provider failover & SLA tiers (99.9%)
+- [ ] ICP SNS DAO governance transition (post-PMF)
 
 ---
 
-## Budget Summary
-
-| Quarter | Budget | Cumulative | Team Size |
-|---------|--------|------------|-----------|
-| Q1 | $25,000 | $25,000 | 2 |
-| Q2 | $45,000 | $70,000 | 3 |
-| Q3 | $60,000 | $130,000 | 4 |
-| Q4 | $80,000 | $210,000 | 5 |
-
----
-
-## Year 1 Targets
-
-| Metric | Target |
-|--------|--------|
-| Registered developers | 5,000 |
-| Active deployments | 500 |
-| Monthly revenue | $25,000 |
-| Enterprise customers | 5 |
-| Uptime | 99.9% |
-
----
-
-## Future (Year 2+)
-
-- Filecoin storage integration
-- Render GPU compute
-- AI/ML runtime
-- Edge functions (global)
-- Token launch (if PMF achieved)
-
----
-
-*See [ARCHITECTURE.md](ARCHITECTURE.md) for full roadmap details.*
+*See [ARCHITECTURE.md](ARCHITECTURE.md#section-15-12-month-roadmap) for full roadmap details.*
