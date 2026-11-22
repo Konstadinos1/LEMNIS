@@ -8,9 +8,10 @@
     "lemniskit": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p ../sdk/tsconfig.json && tsc",
     "dev": "tsx src/cli.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p ../sdk/tsconfig.json && tsc --noEmit",
+    "pretest": "tsc -p ../sdk/tsconfig.json",
     "test": "vitest run"
   },
   "keywords": [
