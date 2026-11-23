@@ -5,10 +5,12 @@
   "type": "module",
   "description": "LEMNIS Website, Interactive Whitepaper v3.1 Reader, Savings Estimator, and Protocol 28 Cloud Console App",
   "scripts": {
+    "predev": "tsc -p ../lemniskit/sdk/tsconfig.json",
     "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc -b && vite build",
+    "build": "tsc -p ../lemniskit/sdk/tsconfig.json && tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p ../lemniskit/sdk/tsconfig.json && tsc --noEmit",
+    "pretest": "tsc -p ../lemniskit/sdk/tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
